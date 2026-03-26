@@ -3,6 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
 import { LayoutDashboard, FileText, TrendingUp, Trophy, BookOpen, Flame, CheckCircle, Star, BarChart2, Medal, Target, Zap, Award, Flag, Timer, PenTool, Check, X, SkipForward } from "lucide-react";
+import { Analytics } from '@vercel/analytics/react';
 
 // Firebase initialized in main.jsx and accessible via window._firebaseDb / window._firebaseAuth
 
@@ -255,6 +256,7 @@ export default function App() {
       {![ "dashboard","papers","progress","leaderboard","syllabus" ].includes(page) && (
         <Dashboard streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { setActivePaper(p); setPage("exam"); }} />
       )}
+      <Analytics />
     </Shell>
   );
 }
