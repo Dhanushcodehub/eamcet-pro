@@ -16,7 +16,7 @@ import { QUESTION_BANK, PAPER_SETS } from "./data/papers.js";
 
 // ─── Session local-cache helpers (instant read, no async delay) ─────────────
 function localSave(uid, sessions) {
-  try { localStorage.setItem(`eamcet_sessions_${uid}`, JSON.stringify(sessions)); } catch (_) {}
+  try { localStorage.setItem(`eamcet_sessions_${uid}`, JSON.stringify(sessions)); } catch (_) { }
 }
 function localLoad(uid) {
   try { return JSON.parse(localStorage.getItem(`eamcet_sessions_${uid}`)) || []; } catch (_) { return []; }
@@ -100,6 +100,72 @@ function calcAccuracy(sessions) {
   const correct = sessions.reduce((a, s) => a + (s.correct || 0), 0);
   return total ? Math.round((correct / total) * 100) : 0;
 }
+
+// --- CSS STYLES ---
+const GlobalStyles = () => (
+  <style dangerouslySetInnerHTML={{ __html: `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;600;700&display=swap');
+    
+    .auth-container { 
+      min-height: 100vh; background: #f6fafe;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Inter', 'Sora', sans-serif;
+      position: relative; overflow: hidden;
+      width: 100%; 
+    }
+    
+    .auth-card { 
+      width: 460px; max-width: 92%; padding: 48px 40px; 
+      background: #ffffff; border: 1px solid #eef2f6; 
+      border-radius: 20px; position: relative; z-index: 10;
+      box-shadow: 0 20px 50px rgba(0, 21, 42, 0.04);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-sizing: border-box;
+    }
+
+    .auth-input { transition: all 0.2s; border-radius: 12px; }
+    .auth-input:focus { border-color: #102a43 !important; box-shadow: 0 0 0 4px rgba(16, 42, 67, 0.1); outline: none; background: #ffffff !important; }
+    .auth-input::placeholder { color: #94a3b8; font-weight: 400; }
+
+    .auth-tab-btn { flex: 1; padding: 12px 0; border: none; border-radius: 10px; cursor: pointer; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.2s ease; }
+    .auth-tab-btn.active { background: #00152a!important; color: #ffffff!important; }
+    .auth-tab-btn:not(.active) { background: transparent; color: #475569; }
+    .auth-tab-btn:not(.active):hover { background: #f0f4f8; }
+
+    .btn-primary { 
+      width: 100%; padding: 15px; 
+      background: linear-gradient(135deg, #00152a 0%, #102a43 100%); 
+      border: none; border-radius: 99px; color: #ffffff; 
+      font-size: 15px; font-weight: 700; cursor: pointer; 
+      font-family: 'Inter', sans-serif; transition: all 0.2s; 
+      margin-bottom: 20px; box-shadow: 0 8px 20px rgba(0, 21, 42, 0.15); 
+    }
+    .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0, 21, 42, 0.2); opacity: 0.95; }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .auth-google-btn { 
+      width: 100%; padding: 14px; background: #ffffff; 
+      border: 1.5px solid #e2e8f0; border-radius: 99px; 
+      color: #171c1f; font-size: 14px; font-weight: 600; 
+      cursor: pointer; font-family: 'Inter', sans-serif; 
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: all 0.2s;
+    }
+    .auth-google-btn:hover:not(:disabled) { background: #f8faff; border-color: #cbd5e1; transform: translateY(-1px); }
+
+    @media screen and (max-width: 640px) {
+      .auth-container { align-items: flex-start !important; padding: 0 !important; overflow-y: auto !important; width: 100% !important; min-height: 100vh !important; }
+      .auth-card { 
+        max-width: none !important; width: 100% !important; min-height: 100vh !important; 
+        border-radius: 0 !important; border: none !important; padding: 60px 24px 40px !important; 
+        display: flex !important; flex-direction: column !important; justify-content: flex-start !important;
+        box-shadow: none !important; margin: 0 !important;
+      }
+      .auth-decorative { display: none !important; }
+    }
+  `}} />
+);
 
 // ─── Root App ──────────────────────────────────────────────────────────────────
 export default function App() {
@@ -256,10 +322,43 @@ export default function App() {
       {page === "leaderboard" && <LeaderboardPage user={user} streak={streak} accuracy={accuracy} sessions={sessions} />}
       {page === "syllabus" && <SyllabusPage />}
       {/* Fallback: if page is unknown (e.g. "home" on reload), show dashboard */}
-      {![ "dashboard","papers","progress","leaderboard","syllabus" ].includes(page) && (
+      {!["dashboard", "papers", "progress", "leaderboard", "syllabus"].includes(page) && (
         <Dashboard streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { setActivePaper(p); setPage("exam"); }} />
       )}
     </Shell>
+  );
+}
+
+// ─── Notification Component ───────────────────────────────────────────────────────
+function NotificationBar({ message, type = "error", onClose }) {
+  if (!message) return null;
+  const isError = type === "error";
+  return (
+    <div style={{
+      position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)", zIndex: 9999,
+      background: isError ? "#fef2f2" : "#fffbeb",
+      border: `1px solid ${isError ? "#fecaca" : "#fde68a"}`,
+      padding: "16px 24px", borderRadius: 12, boxShadow: "0 24px 48px rgba(0,0,0,0.12)",
+      display: "flex", alignItems: "flex-start", gap: 14, width: "90%", maxWidth: 420,
+      animation: "slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1)"
+    }}>
+      <style>{`
+        @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -24px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+      `}</style>
+      <div style={{ color: isError ? "#ef4444" : "#f59e0b", marginTop: 1 }}>
+        {isError
+          ? <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          : <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        }
+      </div>
+      <div style={{ flex: 1 }}>
+        <p style={{ color: isError ? "#b91c1c" : "#b45309", fontSize: 13.5, margin: 0, fontWeight: 600, letterSpacing: "-0.2px" }}>{isError ? "Authentication Error" : "Warning"}</p>
+        <p style={{ color: isError ? "#dc2626" : "#d97706", fontSize: 13, margin: "4px 0 0 0", lineHeight: 1.4 }}>{message}</p>
+      </div>
+      <button onClick={onClose} style={{ background: "none", border: "none", color: isError ? "#f87171" : "#fbbf24", cursor: "pointer", padding: 4, display: "flex", borderRadius: 6, transition: "background 0.2s" }} onMouseOver={e => e.currentTarget.style.background = isError ? "#fee2e2" : "#fef3c7"} onMouseOut={e => e.currentTarget.style.background = "transparent"}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
   );
 }
 
@@ -290,8 +389,8 @@ function AuthPage({ onLogin }) {
         if (result?.user) {
           const u = result.user;
           onLogin({
-            uid:   u.uid,
-            name:  u.displayName || u.email?.split("@")[0] || "User",
+            uid: u.uid,
+            name: u.displayName || u.email?.split("@")[0] || "User",
             email: u.email,
           });
         } else {
@@ -302,8 +401,8 @@ function AuthPage({ onLogin }) {
       .catch((e) => {
         console.error("[getRedirectResult error]", e.code, e.message);
         const msgs = {
-          "auth/operation-not-allowed":  "Google Sign-In is not enabled. Go to Firebase Console → Authentication → Sign-in method → Google → Enable.",
-          "auth/unauthorized-domain":    `Domain '${window.location.hostname}' not authorized. Add it in Firebase Console → Authentication → Settings → Authorized Domains.`,
+          "auth/operation-not-allowed": "Google Sign-In is not enabled. Go to Firebase Console → Authentication → Sign-in method → Google → Enable.",
+          "auth/unauthorized-domain": `Domain '${window.location.hostname}' not authorized. Add it in Firebase Console → Authentication → Settings → Authorized Domains.`,
           "auth/account-exists-with-different-credential": "An account already exists with this email using a different sign-in method.",
         };
         if (e.code) setErr(msgs[e.code] || `Error [${e.code}]: ${e.message}`);
@@ -327,9 +426,9 @@ function AuthPage({ onLogin }) {
     if (!email || !pwd) { setErr("Please fill all fields"); return; }
     if (mode === "signup" && !name) { setErr("Please enter your full name"); return; }
     if (pwd.length < 6) { setErr("Password must be at least 6 characters"); return; }
-    
+
     setLoading(true); setErr("");
-    
+
     try {
       if (window._firebaseAuth) {
         let cred;
@@ -340,8 +439,8 @@ function AuthPage({ onLogin }) {
           await updateProfile(cred.user, { displayName: name });
         }
         onLogin({
-          uid:   cred.user.uid,
-          name:  cred.user.displayName || email.split("@")[0],
+          uid: cred.user.uid,
+          name: cred.user.displayName || email.split("@")[0],
           email: cred.user.email,
         });
       } else {
@@ -351,9 +450,20 @@ function AuthPage({ onLogin }) {
         onLogin({ uid, name: name || email.split("@")[0], email });
       }
     } catch (e) {
-      setErr(e.message || "Authentication failed. Please check your credentials.");
+      console.error("[Auth Error]", e.code, e.message);
+      const messages = {
+        "auth/invalid-credential": "Incorrect email or password. Please try again.",
+        "auth/user-not-found": "No account found for this email address.",
+        "auth/wrong-password": "Incorrect password. Please try again.",
+        "auth/invalid-email": "Please enter a valid email address.",
+        "auth/email-already-in-use": "An account already exists with this email address.",
+        "auth/weak-password": "Your password is too weak. It must be at least 6 characters.",
+        "auth/too-many-requests": "Too many failed login attempts. Please try again later.",
+        "auth/network-request-failed": "Network error. Please check your internet connection."
+      };
+      setErr(messages[e.code] || "Authentication failed. Please try again.");
     }
-    
+
     setLoading(false);
   };
 
@@ -368,8 +478,8 @@ function AuthPage({ onLogin }) {
           // Try popup first — fast, reliable, works on localhost & Vercel
           const cred = await signInWithPopup(window._firebaseAuth, provider);
           onLogin({
-            uid:   cred.user.uid,
-            name:  cred.user.displayName || cred.user.email?.split("@")[0] || "User",
+            uid: cred.user.uid,
+            name: cred.user.displayName || cred.user.email?.split("@")[0] || "User",
             email: cred.user.email,
           });
           return;
@@ -394,11 +504,11 @@ function AuthPage({ onLogin }) {
     } catch (e) {
       console.error("[Google Auth Error] code:", e.code, "message:", e.message);
       const errorMessages = {
-        "auth/operation-not-allowed":   "Google Sign-In is not enabled. Go to Firebase Console → Authentication → Sign-in method → Google → Enable it.",
-        "auth/unauthorized-domain":     `Domain not authorized. Add '${window.location.hostname}' to Firebase Console → Authentication → Settings → Authorized Domains.`,
+        "auth/operation-not-allowed": "Google Sign-In is not enabled. Go to Firebase Console → Authentication → Sign-in method → Google → Enable it.",
+        "auth/unauthorized-domain": `Domain not authorized. Add '${window.location.hostname}' to Firebase Console → Authentication → Settings → Authorized Domains.`,
         "auth/cancelled-popup-request": "Sign-in was cancelled. Please try again.",
-        "auth/invalid-api-key":         "Firebase API key is invalid. Check your .env file.",
-        "auth/network-request-failed":  "Network error. Please check your internet connection.",
+        "auth/invalid-api-key": "Firebase API key is invalid. Check your .env file.",
+        "auth/network-request-failed": "Network error. Please check your internet connection.",
         "auth/account-exists-with-different-credential": "An account already exists with this email. Try signing in with email/password.",
       };
       setErr(
@@ -410,95 +520,120 @@ function AuthPage({ onLogin }) {
   };
 
   return (
-    <div style={{
-      minHeight: "100vh", background: "#f8faff",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Sora', sans-serif",
-      backgroundImage: "radial-gradient(circle at 10% 10%, rgba(37,99,235,0.06) 0%, transparent 40%), radial-gradient(circle at 90% 90%, rgba(37,99,235,0.06) 0%, transparent 40%)",
-      padding: 24
-    }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
-        .auth-input { transition: all 0.2s; }
-        .auth-input:focus { border-color: #3b82f6 !important; box-shadow: 0 0 0 4px rgba(59,130,246,0.15); outline: none; background: #ffffff !important; }
-        .auth-input::placeholder { color: #94a3b8; font-weight: 400; }
-        .auth-google-btn { transition: all 0.2s; }
-        .auth-google-btn:hover:not(:disabled) { background: #f8faff !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.04); border-color: #cbd5e1 !important; }
-      `}</style>
+    <div className="auth-container">
+      <GlobalStyles />
       {/* Decorative circles */}
-      <div style={{ position: "absolute", top: "-100px", right: "-100px", width: 400, height: 400, borderRadius: "50%", border: "1.5px solid rgba(37,99,235,0.08)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", bottom: "-150px", left: "-100px", width: 500, height: 500, borderRadius: "50%", border: "1.5px solid rgba(37,99,235,0.08)", pointerEvents: "none" }} />
+      <div className="auth-decorative" style={{ position: "absolute", top: "-100px", right: "-100px", width: 400, height: 400, borderRadius: "50%", border: "1.5px solid rgba(0, 21, 42, 0.05)", pointerEvents: "none" }} />
+      <div className="auth-decorative" style={{ position: "absolute", bottom: "-150px", left: "-100px", width: 500, height: 500, borderRadius: "50%", border: "1.5px solid rgba(0, 21, 42, 0.05)", pointerEvents: "none" }} />
 
-      <div style={{ width: "100%", maxWidth: 440, padding: "48px 40px", background: "#ffffff", border: "1px solid #f1f5f9", borderRadius: 24, boxShadow: "0 24px 64px rgba(15,23,42,0.04), 0 8px 16px rgba(15,23,42,0.02)", position: "relative", zIndex: 10 }}>
+      <div className="auth-card">
         {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: "#ffffff" }}>E</div>
-            <span style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: -0.5 }}>EMCET<span style={{ color: "#2563eb" }}>Pro</span></span>
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: "linear-gradient(135deg, #00152a, #102a43)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "#ffffff" }}>E</div>
+            <span style={{ fontSize: 24, fontWeight: 800, color: "#171c1f", letterSpacing: -0.8 }}>EMCET<span style={{ color: "#102a43" }}>Pro</span></span>
           </div>
-          <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>TG EMCET Practice Platform</p>
+          <p style={{ color: "#43474d", fontSize: 13, margin: 0, fontWeight: 500, letterSpacing: 0.2 }}>The Curated Intelligence Practice Platform</p>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", background: "#ffffff", borderRadius: 12, padding: 4, marginBottom: 28 }}>
+        <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 14, padding: 4, marginBottom: 32 }}>
           {["login", "signup"].map(m => (
             <button key={m} onClick={() => { setMode(m); setErr(""); }}
-              style={{ flex: 1, padding: "10px 0", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, transition: "all 0.2s",
-                background: mode === m ? "#2563eb" : "transparent", color: mode === m ? "#ffffff" : "#334155" }}>
+              className={`auth-tab-btn ${mode === m ? "active" : ""}`}>
               {m === "login" ? "Sign In" : "Sign Up"}
             </button>
           ))}
         </div>
 
         {/* Fields */}
-        {mode === "signup" && (
-          <Field label="Full Name" value={name} onChange={setName} placeholder="Ravi Kumar" />
-        )}
-        <Field label="Email Address" value={email} onChange={setEmail} placeholder="student@example.com" type="email" />
-        <Field label="Password" value={pwd} onChange={setPwd} placeholder="••••••••" type="password" />
-
-        {err && <p style={{ color: "#f87171", fontSize: 12, marginBottom: 12 }}>{err}</p>}
-
-        <button onClick={handle} disabled={loading}
-          style={{ width: "100%", padding: "14px", background: loading ? "rgba(99,102,241,0.5)" : "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 12, color: "#ffffff", fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.2s", marginBottom: 16, boxShadow: loading ? "none" : "0 8px 16px rgba(37,99,235,0.2)" }}>
-          {loading ? "Please wait..." : mode === "login" ? "Sign In →" : "Create Account →"}
-        </button>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-          <span style={{ color: "#64748b", fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>OR</span>
-          <div style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+        <div style={{ marginBottom: 24 }}>
+          {mode === "signup" && (
+            <Field label="Full Name" value={name} onChange={setName} placeholder="Ravi Kumar" />
+          )}
+          <Field
+            label="Email Address"
+            value={email}
+            onChange={setEmail}
+            placeholder="student@example.com"
+            type="email"
+            hint={email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "Please enter a valid email" : email && !email.toLowerCase().endsWith("@gmail.com") ? "Gmail recommended for better sync" : ""}
+            hintType={email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "success" : "error"}
+          />
+          <Field
+            label="Password"
+            value={pwd}
+            onChange={setPwd}
+            placeholder="••••••••"
+            type="password"
+            hint={pwd && pwd.length < 6 ? "Minimum 6 characters required" : pwd.length >= 6 ? "Password looks good" : ""}
+            hintType={pwd.length >= 6 ? "success" : "error"}
+          />
         </div>
 
-        <button className="auth-google-btn" onClick={handleGoogleLogin} disabled={loading}
-          style={{ width: "100%", padding: "14px", background: "#ffffff", border: "1.5px solid #e2e8f0", borderRadius: 12, color: "#0f172a", fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <NotificationBar message={err} type="error" onClose={() => setErr("")} />
+
+        <button onClick={handle} disabled={loading} className="btn-primary">
+          {loading ? "Optimizing..." : mode === "login" ? "Enter Dashboard →" : "Create Account →"}
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <div style={{ flex: 1, height: 1, background: "#eef2f6" }} />
+          <span style={{ color: "#94a3b8", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, fontWeight: 700 }}>OR</span>
+          <div style={{ flex: 1, height: 1, background: "#eef2f6" }} />
+        </div>
+
+        <button className="auth-google-btn" onClick={handleGoogleLogin} disabled={loading}>
           {loading ? (
             <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b" }}>
-              <span style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTop: "2px solid #2563eb", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+              <span style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTop: "2px solid #102a43", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
               Connecting…
             </span>
           ) : (
             <>
-              <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" /><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
               Continue with Google
             </>
           )}
         </button>
-
-        <p style={{ color: "#64748b", fontSize: 12, textAlign: "center", margin: 0 }}>
-          Firebase Authentication • Your data is secure
+        <br></br>
+        <p style={{ color: "#94a3b8", fontSize: 11, textAlign: "center", margin: 0, fontWeight: 500 }}>
+          Quiet Focus Interface • Secure Data Sync
         </p>
       </div>
     </div>
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = "text" }) {
+function Field({ label, value, onChange, placeholder, type = "text", hint = "", hintType = "error" }) {
+  const isError = hintType === "error";
   return (
-    <div style={{ marginBottom: 18 }}>
-      <label style={{ display: "block", color: "#475569", fontSize: 11, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</label>
-      <input className="auth-input" type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        style={{ width: "100%", padding: "14px 16px", background: "#f8faff", border: "1.5px solid #e2e8f0", borderRadius: 12, color: "#0f172a", fontSize: 14, fontWeight: 500, fontFamily: "'Sora',sans-serif", boxSizing: "border-box" }} />
+    <div style={{ marginBottom: 20 }}>
+      <label style={{ display: "block", color: "#171c1f", fontSize: 10, fontWeight: 800, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>{label}</label>
+      <input
+        className="auth-input"
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: "100%",
+          padding: "15px 18px",
+          background: "#f8faff",
+          border: `1.5px solid ${hint && isError ? "#fca5a5" : "#e2e8f0"}`,
+          borderRadius: 14,
+          color: "#171c1f",
+          fontSize: 14,
+          fontWeight: 500,
+          fontFamily: "'Inter', sans-serif",
+          boxSizing: "border-box"
+        }}
+      />
+      {hint && (
+        <p style={{ margin: "8px 0 0 4px", fontSize: 11, fontWeight: 600, color: isError ? "#f87171" : "#10b981", display: "flex", alignItems: "center", gap: 6, letterSpacing: -0.1 }}>
+          <span style={{ fontSize: 14 }}>{isError ? "✕" : "✓"}</span> {hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -571,7 +706,8 @@ function Shell({ user, page, setPage, onLogout, children }) {
               style={{
                 background: page === item.id ? "#e2e8f0" : "transparent",
                 color: page === item.id ? "#3b82f6" : "#475569",
-                borderLeft: page === item.id ? "2.5px solid #2563eb" : "2.5px solid transparent" }}>
+                borderLeft: page === item.id ? "2.5px solid #2563eb" : "2.5px solid transparent"
+              }}>
               <span>{item.icon}</span> {item.label}
             </button>
           ))}
@@ -834,10 +970,10 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
 
       {/* ── Stat Cards ── */}
       <div className="grid-4 dash-fade dash-f2" style={{ marginBottom: 18 }}>
-        <StatCard icon={<Flame size={20} color="#f97316" />}       value={streak}          label="Day Streak"   accent="#f97316" sublabel={streak >= 3 ? "🔥 On fire!" : "Build it up"} />
-        <StatCard icon={<CheckCircle size={20} color="#10b981" />}  value={`${accuracy}%`}  label="Accuracy"     accent="#10b981" sublabel={accuracy >= 70 ? "Excellent" : accuracy >= 50 ? "Good" : "Needs work"} />
-        <StatCard icon={<FileText size={20} color="#2563eb" />}     value={totalPapers}     label="Papers Done"  accent="#2563eb" sublabel={`${solvedToday} today`} />
-        <StatCard icon={<Star size={20} color="#f59e0b" />}         value={`${bestScore}%`} label="Best Score"   accent="#f59e0b" sublabel="All time high" />
+        <StatCard icon={<Flame size={20} color="#f97316" />} value={streak} label="Day Streak" accent="#f97316" sublabel={streak >= 3 ? "🔥 On fire!" : "Build it up"} />
+        <StatCard icon={<CheckCircle size={20} color="#10b981" />} value={`${accuracy}%`} label="Accuracy" accent="#10b981" sublabel={accuracy >= 70 ? "Excellent" : accuracy >= 50 ? "Good" : "Needs work"} />
+        <StatCard icon={<FileText size={20} color="#2563eb" />} value={totalPapers} label="Papers Done" accent="#2563eb" sublabel={`${solvedToday} today`} />
+        <StatCard icon={<Star size={20} color="#f59e0b" />} value={`${bestScore}%`} label="Best Score" accent="#f59e0b" sublabel="All time high" />
       </div>
 
       {/* ── TODAY'S CHALLENGE — moved to top ── */}
@@ -1006,24 +1142,24 @@ function StreakCalendar({ sessions, streak }) {
       <div className="sc-grid">
         {cells.map((cell, idx) => {
           // Style logic
-          let bg     = "#ffffff";
+          let bg = "#ffffff";
           let border = "1px solid #e2e8f0";
           let shadow = "none";
           let outline = "none";
 
           if (cell.active) {
-            bg     = "linear-gradient(135deg, #2563eb, #1d4ed8)";
+            bg = "linear-gradient(135deg, #2563eb, #1d4ed8)";
             border = "1px solid transparent";
             shadow = "0 1px 3px rgba(0,0,0,0.05)";
           }
           if (cell.isToday && !cell.active) {
-            bg     = "#e2e8f0";
+            bg = "#e2e8f0";
             border = "1px solid rgba(165,180,252,0.42)";
             outline = "2px solid rgba(165,180,252,0.18)";
           }
           if (cell.isToday && cell.active) {
             // today + solved — brighter ring
-            shadow  = "0 0 8px #475569";
+            shadow = "0 0 8px #475569";
             outline = "2px solid #64748b";
           }
 
@@ -1077,14 +1213,14 @@ function SubjectProgress({ sessions }) {
       Object.entries(s.subjectBreakdown).forEach(([subj, data]) => {
         if (!subjectScores[subj]) subjectScores[subj] = { correct: 0, total: 0 };
         subjectScores[subj].correct += data.correct;
-        subjectScores[subj].total   += data.total;
+        subjectScores[subj].total += data.total;
       });
     }
   });
 
   const subjects = [
-    { name: "Physics",     color: "#2563eb", icon: "⚛️" },
-    { name: "Chemistry",   color: "#10b981", icon: "🧪" },
+    { name: "Physics", color: "#2563eb", icon: "⚛️" },
+    { name: "Chemistry", color: "#10b981", icon: "🧪" },
     { name: "Mathematics", color: "#f59e0b", icon: "📐" },
   ];
 
@@ -1102,8 +1238,8 @@ function SubjectProgress({ sessions }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
         {subjects.map(({ name, color, icon }) => {
-          const data    = subjectScores[name];
-          const pct     = data ? Math.round((data.correct / data.total) * 100) : 0;
+          const data = subjectScores[name];
+          const pct = data ? Math.round((data.correct / data.total) * 100) : 0;
           const hasData = !!data;
           return (
             <div key={name}>
@@ -1492,7 +1628,7 @@ function ExamPage({ paper, onSubmit, onExit }) {
           }}>
             <Timer size={15} color={isLow ? "#f87171" : "#3b82f6"} />
             <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 19, fontWeight: 700, color: isLow ? "#f87171" : "#3b82f6", letterSpacing: 1 }}>
-              {String(mins).padStart(2,"0")}:{String(secs).padStart(2,"0")}
+              {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
             </span>
           </div>
           <button onClick={() => setShowConfirm(true)} style={{
@@ -2004,9 +2140,9 @@ function AnalysisPage({ data, onBack }) {
         {/* ── Stat Cards ── */}
         <div className="an-stats">
           {[
-            { v: correct, l: "Correct",    c: "#10b981", icon: <CheckCircle size={18} color="#10b981" />, bg: "#e2e8f0"  },
-            { v: wrong,   l: "Wrong",      c: "#f87171", icon: <X           size={18} color="#f87171" />, bg: "#e2e8f0"   },
-            { v: skipped, l: "Skipped",    c: "#f59e0b", icon: <SkipForward size={18} color="#f59e0b" />, bg: "#e2e8f0"  },
+            { v: correct, l: "Correct", c: "#10b981", icon: <CheckCircle size={18} color="#10b981" />, bg: "#e2e8f0" },
+            { v: wrong, l: "Wrong", c: "#f87171", icon: <X size={18} color="#f87171" />, bg: "#e2e8f0" },
+            { v: skipped, l: "Skipped", c: "#f59e0b", icon: <SkipForward size={18} color="#f59e0b" />, bg: "#e2e8f0" },
             { v: `${Math.floor(timeTaken / 60)}m ${timeTaken % 60}s`, l: "Time Taken", c: "#2563eb", icon: <Timer size={18} color="#2563eb" />, bg: "#e2e8f0" },
           ].map(({ v, l, c, icon, bg }, idx) => (
             <div key={l} className={`an-stat-card an-fade an-fade-${idx + 1}`} style={{ borderColor: `${c}22` }}>
@@ -2053,7 +2189,7 @@ function AnalysisPage({ data, onBack }) {
                     <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
                       {[
                         { label: "Correct", val: d.correct, c: "#10b981" },
-                        { label: "Wrong",   val: d.wrong,   c: "#f87171" },
+                        { label: "Wrong", val: d.wrong, c: "#f87171" },
                         { label: "Skipped", val: d.skipped, c: "#f59e0b" },
                       ].map(({ label, val, c }) => (
                         <div key={label} style={{ flex: 1, background: `${c}0f`, border: `1px solid ${c}22`, borderRadius: 8, padding: "7px 0", textAlign: "center" }}>
@@ -2325,32 +2461,32 @@ function ProgressPage({ sessions, streak, accuracy }) {
       Object.entries(s.subjectBreakdown).forEach(([subj, data]) => {
         if (!subjectScores[subj]) subjectScores[subj] = { correct: 0, total: 0 };
         subjectScores[subj].correct += data.correct;
-        subjectScores[subj].total   += data.total;
+        subjectScores[subj].total += data.total;
       });
     }
   });
   const subjects = [
-    { name: "Physics",     color: "#2563eb", icon: "⚛️" },
-    { name: "Chemistry",   color: "#10b981", icon: "🧪" },
+    { name: "Physics", color: "#2563eb", icon: "⚛️" },
+    { name: "Chemistry", color: "#10b981", icon: "🧪" },
     { name: "Mathematics", color: "#f59e0b", icon: "📐" },
   ];
 
   // ── Derived stats ──────────────────────────────────────────────────────────
-  const totalPapers   = sessions.length;
-  const bestScore     = totalPapers ? Math.max(...sessions.map(s => Math.round((s.correct / s.total) * 100))) : 0;
-  const avgScore      = totalPapers ? Math.round(sessions.reduce((a, s) => a + (s.correct / s.total), 0) / totalPapers * 100) : 0;
+  const totalPapers = sessions.length;
+  const bestScore = totalPapers ? Math.max(...sessions.map(s => Math.round((s.correct / s.total) * 100))) : 0;
+  const avgScore = totalPapers ? Math.round(sessions.reduce((a, s) => a + (s.correct / s.total), 0) / totalPapers * 100) : 0;
   const thisWeekCount = weekly.reduce((a, d) => a + d.sessions, 0);
 
   // ── Achievements ───────────────────────────────────────────────────────────
   const achievements = [
-    { icon: <Zap   size={20} />, label: "First Paper",    desc: "Complete 1 paper",     unlocked: totalPapers >= 1,  color: "#f59e0b" },
-    { icon: <Flame size={20} />, label: "3-Day Streak",   desc: "3 days in a row",      unlocked: streak >= 3,       color: "#f97316" },
-    { icon: <FileText size={20}/>, label: "5 Papers",     desc: "Solve 5 papers",       unlocked: totalPapers >= 5,  color: "#2563eb" },
-    { icon: <Target size={20}/>, label: "80% Accuracy",   desc: "Reach 80% accuracy",   unlocked: accuracy >= 80,    color: "#10b981" },
-    { icon: <Flame size={20} />, label: "7-Day Streak",   desc: "7 days in a row",      unlocked: streak >= 7,       color: "#f97316" },
-    { icon: <Trophy size={20}/>, label: "Perfect Score",  desc: "Score 100% on a paper",unlocked: sessions.some(s => s.correct === s.total), color: "#3b82f6" },
-    { icon: <Award size={20} />, label: "30-Day Streak",  desc: "30 days in a row",     unlocked: streak >= 30,      color: "#ec4899" },
-    { icon: <Star  size={20} />, label: "Top Scorer",     desc: "Score 90%+ on a paper",unlocked: bestScore >= 90,   color: "#f59e0b" },
+    { icon: <Zap size={20} />, label: "First Paper", desc: "Complete 1 paper", unlocked: totalPapers >= 1, color: "#f59e0b" },
+    { icon: <Flame size={20} />, label: "3-Day Streak", desc: "3 days in a row", unlocked: streak >= 3, color: "#f97316" },
+    { icon: <FileText size={20} />, label: "5 Papers", desc: "Solve 5 papers", unlocked: totalPapers >= 5, color: "#2563eb" },
+    { icon: <Target size={20} />, label: "80% Accuracy", desc: "Reach 80% accuracy", unlocked: accuracy >= 80, color: "#10b981" },
+    { icon: <Flame size={20} />, label: "7-Day Streak", desc: "7 days in a row", unlocked: streak >= 7, color: "#f97316" },
+    { icon: <Trophy size={20} />, label: "Perfect Score", desc: "Score 100% on a paper", unlocked: sessions.some(s => s.correct === s.total), color: "#3b82f6" },
+    { icon: <Award size={20} />, label: "30-Day Streak", desc: "30 days in a row", unlocked: streak >= 30, color: "#ec4899" },
+    { icon: <Star size={20} />, label: "Top Scorer", desc: "Score 90%+ on a paper", unlocked: bestScore >= 90, color: "#f59e0b" },
   ];
   const unlockedCount = achievements.filter(a => a.unlocked).length;
 
@@ -2418,11 +2554,11 @@ function ProgressPage({ sessions, streak, accuracy }) {
       `}</style>
 
       {/* ── Page Header ── */}
-      <div className="pg-fade pg-f1" style={{ marginBottom:26 }}>
-        <h2 style={{ margin:"0 0 5px", color:"#0f172a", fontSize:24, fontWeight:700, letterSpacing:-0.4 }}>Your Progress</h2>
-        <p style={{ margin:0, color:"#64748b", fontSize:13 }}>
+      <div className="pg-fade pg-f1" style={{ marginBottom: 26 }}>
+        <h2 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 24, fontWeight: 700, letterSpacing: -0.4 }}>Your Progress</h2>
+        <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
           {totalPapers > 0
-            ? `${totalPapers} paper${totalPapers!==1?"s":""} solved · ${unlockedCount}/${achievements.length} achievements unlocked`
+            ? `${totalPapers} paper${totalPapers !== 1 ? "s" : ""} solved · ${unlockedCount}/${achievements.length} achievements unlocked`
             : "Start solving papers to track your progress"}
         </p>
       </div>
@@ -2430,19 +2566,19 @@ function ProgressPage({ sessions, streak, accuracy }) {
       {/* ── Top Stat Cards ── */}
       <div className="pg-stats-grid pg-fade pg-f2">
         {[
-          { icon:<Flame size={20} color="#f97316"/>, value:streak,          label:"Day Streak",    sub: streak>=3?"🔥 On fire!":"Build it up", accent:"#f97316" },
-          { icon:<CheckCircle size={20} color="#10b981"/>, value:`${accuracy}%`, label:"Avg Accuracy",  sub: accuracy>=70?"Excellent":accuracy>=50?"Keep going":"Needs work", accent:"#10b981" },
-          { icon:<FileText size={20} color="#2563eb"/>, value:totalPapers,   label:"Papers Solved", sub:`${thisWeekCount} this week`, accent:"#2563eb" },
-          { icon:<Star size={20} color="#f59e0b"/>,     value:`${bestScore}%`, label:"Best Score",    sub:"All time high", accent:"#f59e0b" },
+          { icon: <Flame size={20} color="#f97316" />, value: streak, label: "Day Streak", sub: streak >= 3 ? "🔥 On fire!" : "Build it up", accent: "#f97316" },
+          { icon: <CheckCircle size={20} color="#10b981" />, value: `${accuracy}%`, label: "Avg Accuracy", sub: accuracy >= 70 ? "Excellent" : accuracy >= 50 ? "Keep going" : "Needs work", accent: "#10b981" },
+          { icon: <FileText size={20} color="#2563eb" />, value: totalPapers, label: "Papers Solved", sub: `${thisWeekCount} this week`, accent: "#2563eb" },
+          { icon: <Star size={20} color="#f59e0b" />, value: `${bestScore}%`, label: "Best Score", sub: "All time high", accent: "#f59e0b" },
         ].map(({ icon, value, label, sub, accent }) => (
-          <div key={label} className="pg-stat-card" style={{ border:`1px solid ${accent}20` }}>
-            <div style={{ position:"absolute", top:-16, right:-16, width:70, height:70, borderRadius:"50%", background:`${accent}12`, pointerEvents:"none" }} />
-            <div style={{ display:"inline-flex", padding:"7px", borderRadius:10, background:`${accent}14`, border:`1px solid ${accent}26`, marginBottom:13 }}>
+          <div key={label} className="pg-stat-card" style={{ border: `1px solid ${accent}20` }}>
+            <div style={{ position: "absolute", top: -16, right: -16, width: 70, height: 70, borderRadius: "50%", background: `${accent}12`, pointerEvents: "none" }} />
+            <div style={{ display: "inline-flex", padding: "7px", borderRadius: 10, background: `${accent}14`, border: `1px solid ${accent}26`, marginBottom: 13 }}>
               {icon}
             </div>
-            <div style={{ fontFamily:"'Space Mono',monospace", fontSize:26, fontWeight:700, color:accent, letterSpacing:-1, lineHeight:1 }}>{value}</div>
-            <div style={{ fontSize:12, color:"#334155", marginTop:4, fontWeight:500 }}>{label}</div>
-            <div style={{ fontSize:10, color:`${accent}aa`, marginTop:5, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>{sub}</div>
+            <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 26, fontWeight: 700, color: accent, letterSpacing: -1, lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: 12, color: "#334155", marginTop: 4, fontWeight: 500 }}>{label}</div>
+            <div style={{ fontSize: 10, color: `${accent}aa`, marginTop: 5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{sub}</div>
           </div>
         ))}
       </div>
@@ -2452,64 +2588,64 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
         {/* Weekly Bar Chart */}
         <div className="pg-card">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-              <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(16,185,129,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: "#f1f5f9", border: "1px solid rgba(16,185,129,0.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <TrendingUp size={16} color="#10b981" />
               </div>
               <div>
-                <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Weekly Activity</div>
-                <div style={{ color:"#64748b", fontSize:11 }}>Papers solved per day</div>
+                <div style={{ color: "#0f172a", fontSize: 14, fontWeight: 700 }}>Weekly Activity</div>
+                <div style={{ color: "#64748b", fontSize: 11 }}>Papers solved per day</div>
               </div>
             </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ fontFamily:"'Space Mono',monospace", fontSize:18, fontWeight:700, color:"#10b981" }}>{thisWeekCount}</div>
-              <div style={{ fontSize:10, color:"#64748b" }}>this week</div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 18, fontWeight: 700, color: "#10b981" }}>{thisWeekCount}</div>
+              <div style={{ fontSize: 10, color: "#64748b" }}>this week</div>
             </div>
           </div>
 
           {/* Chart */}
-          <div style={{ display:"flex", alignItems:"flex-end", gap:8, height:130, paddingBottom:2 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 130, paddingBottom: 2 }}>
             {weekly.map((d, i) => {
               const heightPct = d.sessions > 0 ? Math.max(18, (d.sessions / maxSessions) * 100) : 0;
               return (
                 <div key={i} className="pg-bar-col">
                   {/* Tooltip */}
-                  <div className="pg-bar-tooltip" style={{ left:"50%", transform:"translateX(-50%) translateY(4px)" }}>
-                    {d.sessions} paper{d.sessions!==1?"s":""}{d.accuracy>0?` · ${d.accuracy}% acc`:""}
+                  <div className="pg-bar-tooltip" style={{ left: "50%", transform: "translateX(-50%) translateY(4px)" }}>
+                    {d.sessions} paper{d.sessions !== 1 ? "s" : ""}{d.accuracy > 0 ? ` · ${d.accuracy}% acc` : ""}
                   </div>
 
                   {/* Value label */}
-                  <div style={{ fontSize:10, color:"#64748b", fontFamily:"'Space Mono',monospace", minHeight:16, display:"flex", alignItems:"center", marginBottom:4 }}>
+                  <div style={{ fontSize: 10, color: "#64748b", fontFamily: "'Space Mono',monospace", minHeight: 16, display: "flex", alignItems: "center", marginBottom: 4 }}>
                     {d.sessions > 0 ? d.sessions : ""}
                   </div>
 
                   {/* Bar track */}
-                  <div style={{ width:"100%", flex:1, display:"flex", alignItems:"flex-end", position:"relative" }}>
-                    <div style={{ width:"100%", height:"100%", background:"#ffffff", borderRadius:6, position:"absolute", bottom:0 }} />
+                  <div style={{ width: "100%", flex: 1, display: "flex", alignItems: "flex-end", position: "relative" }}>
+                    <div style={{ width: "100%", height: "100%", background: "#ffffff", borderRadius: 6, position: "absolute", bottom: 0 }} />
                     <div
                       className="pg-bar-inner"
                       style={{
-                        width:"100%",
+                        width: "100%",
                         height: d.sessions > 0 ? `${heightPct}%` : "4px",
                         background: d.isToday
                           ? "linear-gradient(180deg,#10b981,#059669)"
                           : d.sessions > 0
                             ? "linear-gradient(180deg,#818cf8,#2563eb)"
                             : "#e2e8f0",
-                        borderRadius:"6px 6px 0 0",
-                        transition:"height 0.6s cubic-bezier(0.4,0,0.2,1)",
-                        position:"relative",
+                        borderRadius: "6px 6px 0 0",
+                        transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)",
+                        position: "relative",
                         boxShadow: d.sessions > 0 ? (d.isToday ? "0 0 10px #64748b" : "0 0 10px #64748b") : "none",
                       }}
                     />
                   </div>
 
                   {/* Day label */}
-                  <div style={{ fontSize:11, color: d.isToday ? "#3b82f6" : "#64748b", marginTop:8, fontWeight: d.isToday ? 700 : 400 }}>
+                  <div style={{ fontSize: 11, color: d.isToday ? "#3b82f6" : "#64748b", marginTop: 8, fontWeight: d.isToday ? 700 : 400 }}>
                     {d.day}
                   </div>
-                  {d.isToday && <div style={{ width:4, height:4, borderRadius:"50%", background:"#2563eb", marginTop:2 }} />}
+                  {d.isToday && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#2563eb", marginTop: 2 }} />}
                 </div>
               );
             })}
@@ -2517,58 +2653,58 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
           {/* Accuracy sparkline hint */}
           {sessions.length > 0 && (
-            <div style={{ marginTop:16, paddingTop:14, borderTop:"1px solid #ffffff", display:"flex", gap:16 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                <div style={{ width:10, height:10, borderRadius:3, background:"linear-gradient(135deg,#818cf8,#2563eb)" }} />
-                <span style={{ fontSize:10, color:"#64748b" }}>Past days</span>
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #ffffff", display: "flex", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg,#818cf8,#2563eb)" }} />
+                <span style={{ fontSize: 10, color: "#64748b" }}>Past days</span>
               </div>
-              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                <div style={{ width:10, height:10, borderRadius:3, background:"linear-gradient(135deg,#10b981,#059669)" }} />
-                <span style={{ fontSize:10, color:"#64748b" }}>Today</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg,#10b981,#059669)" }} />
+                <span style={{ fontSize: 10, color: "#64748b" }}>Today</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Subject Breakdown */}
-        <div className="pg-card" style={{ display:"flex", flexDirection:"column" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:20 }}>
-            <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(99,102,241,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div className="pg-card" style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: "#f1f5f9", border: "1px solid rgba(99,102,241,0.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <BarChart2 size={16} color="#818cf8" />
             </div>
             <div>
-              <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Subject Mastery</div>
-              <div style={{ color:"#64748b", fontSize:11 }}>Cumulative accuracy</div>
+              <div style={{ color: "#0f172a", fontSize: 14, fontWeight: 700 }}>Subject Mastery</div>
+              <div style={{ color: "#64748b", fontSize: 11 }}>Cumulative accuracy</div>
             </div>
           </div>
 
           {!sessions.length ? (
-            <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8, padding:"20px 0" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 0" }}>
               <BarChart2 size={28} color="#f1f5f9" />
-              <p style={{ color:"#64748b", fontSize:12, margin:0, textAlign:"center" }}>Complete papers to see subject breakdown</p>
+              <p style={{ color: "#64748b", fontSize: 12, margin: 0, textAlign: "center" }}>Complete papers to see subject breakdown</p>
             </div>
           ) : (
-            <div style={{ display:"flex", flexDirection:"column", gap:18, flex:1 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18, flex: 1 }}>
               {subjects.map(({ name, color, icon }) => {
                 const data = subjectScores[name];
-                const pct  = data ? Math.round((data.correct / data.total) * 100) : 0;
-                const has  = !!data;
+                const pct = data ? Math.round((data.correct / data.total) * 100) : 0;
+                const has = !!data;
                 return (
                   <div key={name}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-                        <span style={{ fontSize:15 }}>{icon}</span>
-                        <span style={{ color:"#334155", fontSize:13, fontWeight:600 }}>{name}</span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <span style={{ fontSize: 15 }}>{icon}</span>
+                        <span style={{ color: "#334155", fontSize: 13, fontWeight: 600 }}>{name}</span>
                       </div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        {has && <span style={{ color:"#64748b", fontSize:10 }}>{data.correct}/{data.total}</span>}
-                        <span style={{ fontFamily:"'Space Mono',monospace", fontSize:14, fontWeight:700, color: has ? color : "rgba(37,99,235,0.15)", minWidth:38, textAlign:"right" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {has && <span style={{ color: "#64748b", fontSize: 10 }}>{data.correct}/{data.total}</span>}
+                        <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 14, fontWeight: 700, color: has ? color : "rgba(37,99,235,0.15)", minWidth: 38, textAlign: "right" }}>
                           {has ? `${pct}%` : "—"}
                         </span>
                       </div>
                     </div>
-                    <div style={{ height:8, background:"#ffffff", borderRadius:6, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${color}bb,${color})`, borderRadius:6, boxShadow:`0 0 8px ${color}55`, transition:"width 1.1s cubic-bezier(0.4,0,0.2,1)" }} />
+                    <div style={{ height: 8, background: "#ffffff", borderRadius: 6, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg,${color}bb,${color})`, borderRadius: 6, boxShadow: `0 0 8px ${color}55`, transition: "width 1.1s cubic-bezier(0.4,0,0.2,1)" }} />
                     </div>
                   </div>
                 );
@@ -2580,44 +2716,44 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
       {/* ── Session History ── */}
       {sessions.length > 0 && (
-        <div className="pg-card pg-fade pg-f4" style={{ marginBottom:22 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-              <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(99,102,241,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div className="pg-card pg-fade pg-f4" style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: "#f1f5f9", border: "1px solid rgba(99,102,241,0.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={16} color="#818cf8" />
               </div>
               <div>
-                <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Recent Sessions</div>
-                <div style={{ color:"#64748b", fontSize:11 }}>Last {Math.min(sessions.length,6)} papers</div>
+                <div style={{ color: "#0f172a", fontSize: 14, fontWeight: 700 }}>Recent Sessions</div>
+                <div style={{ color: "#64748b", fontSize: 11 }}>Last {Math.min(sessions.length, 6)} papers</div>
               </div>
             </div>
-            <span style={{ color:"#64748b", fontSize:11 }}>{totalPapers} total</span>
+            <span style={{ color: "#64748b", fontSize: 11 }}>{totalPapers} total</span>
           </div>
 
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {sessions.slice(-6).reverse().map((s, i) => {
-              const pct  = Math.round((s.correct / s.total) * 100);
+              const pct = Math.round((s.correct / s.total) * 100);
               const good = pct >= 60;
               return (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", background:"#ffffff", border:"1px solid #ffffff", borderRadius:11, transition:"background 0.15s" }}
-                  onMouseEnter={e => e.currentTarget.style.background="#ffffff"}
-                  onMouseLeave={e => e.currentTarget.style.background="#ffffff"}>
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: "#ffffff", border: "1px solid #ffffff", borderRadius: 11, transition: "background 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#ffffff"}
+                  onMouseLeave={e => e.currentTarget.style.background = "#ffffff"}>
                   {/* Score badge */}
-                  <div style={{ width:38, height:38, borderRadius:10, background: good?"#f1f5f9":"#f1f5f9", border:`1px solid ${good?"rgba(16,185,129,0.25)":"rgba(239,68,68,0.25)"}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                    <span style={{ fontFamily:"'Space Mono',monospace", fontSize:11, fontWeight:700, color: good?"#10b981":"#f87171" }}>{pct}%</span>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: good ? "#f1f5f9" : "#f1f5f9", border: `1px solid ${good ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 11, fontWeight: 700, color: good ? "#10b981" : "#f87171" }}>{pct}%</span>
                   </div>
                   {/* Info */}
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ color:"#0f172a", fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.paperLabel || "Practice Paper"}</div>
-                    <div style={{ color:"#64748b", fontSize:11, marginTop:2 }}>{s.date}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.paperLabel || "Practice Paper"}</div>
+                    <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>{s.date}</div>
                   </div>
                   {/* Mini bar + score */}
-                  <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-                    <div style={{ width:56, height:5, background:"#e2e8f0", borderRadius:3, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${pct}%`, background: good?"#10b981":"#f87171", borderRadius:3 }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    <div style={{ width: 56, height: 5, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: good ? "#10b981" : "#f87171", borderRadius: 3 }} />
                     </div>
-                    <div style={{ textAlign:"right", minWidth:36 }}>
-                      <div style={{ color: good?"#10b981":"#f87171", fontSize:13, fontWeight:700, fontFamily:"'Space Mono',monospace" }}>{s.correct}/{s.total}</div>
+                    <div style={{ textAlign: "right", minWidth: 36 }}>
+                      <div style={{ color: good ? "#10b981" : "#f87171", fontSize: 13, fontWeight: 700, fontFamily: "'Space Mono',monospace" }}>{s.correct}/{s.total}</div>
                     </div>
                   </div>
                 </div>
@@ -2629,42 +2765,42 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
       {/* ── Achievements ── */}
       <div className="pg-card pg-fade pg-f5">
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-            <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(245,158,11,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: "#f1f5f9", border: "1px solid rgba(245,158,11,0.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Award size={16} color="#f59e0b" />
             </div>
             <div>
-              <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Achievements</div>
-              <div style={{ color:"#64748b", fontSize:11 }}>{unlockedCount} of {achievements.length} unlocked</div>
+              <div style={{ color: "#0f172a", fontSize: 14, fontWeight: 700 }}>Achievements</div>
+              <div style={{ color: "#64748b", fontSize: 11 }}>{unlockedCount} of {achievements.length} unlocked</div>
             </div>
           </div>
           {/* Progress bar */}
-          <div style={{ width:80, height:5, background:"#e2e8f0", borderRadius:3, overflow:"hidden" }}>
-            <div style={{ height:"100%", width:`${(unlockedCount/achievements.length)*100}%`, background:"linear-gradient(90deg,#f59e0b,#f97316)", borderRadius:3 }} />
+          <div style={{ width: 80, height: 5, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${(unlockedCount / achievements.length) * 100}%`, background: "linear-gradient(90deg,#f59e0b,#f97316)", borderRadius: 3 }} />
           </div>
         </div>
 
         <div className="pg-ach-grid">
           {achievements.map(({ icon, label, desc, unlocked, color }) => (
-            <div key={label} className={`pg-ach-card ${unlocked?"unlocked":""}`}
+            <div key={label} className={`pg-ach-card ${unlocked ? "unlocked" : ""}`}
               style={{
                 background: unlocked ? `${color}10` : "#ffffff",
                 border: `1px solid ${unlocked ? `${color}30` : "#e2e8f0"}`,
                 opacity: unlocked ? 1 : 0.45,
               }}>
               {/* Glow */}
-              {unlocked && <div style={{ position:"absolute", top:-20, left:"50%", transform:"translateX(-50%)", width:50, height:50, borderRadius:"50%", background:`${color}20`, pointerEvents:"none" }} />}
+              {unlocked && <div style={{ position: "absolute", top: -20, left: "50%", transform: "translateX(-50%)", width: 50, height: 50, borderRadius: "50%", background: `${color}20`, pointerEvents: "none" }} />}
               {/* Icon */}
-              <div style={{ width:40, height:40, borderRadius:11, background: unlocked?`${color}18`:"#ffffff", border:`1px solid ${unlocked?`${color}30`:"#e2e8f0"}`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 10px", color: unlocked?color:"#64748b" }}>
+              <div style={{ width: 40, height: 40, borderRadius: 11, background: unlocked ? `${color}18` : "#ffffff", border: `1px solid ${unlocked ? `${color}30` : "#e2e8f0"}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px", color: unlocked ? color : "#64748b" }}>
                 {icon}
               </div>
-              <div style={{ color: unlocked?"#0f172a":"#64748b", fontSize:12, fontWeight:700, marginBottom:4, lineHeight:1.3 }}>{label}</div>
-              <div style={{ color:"#64748b", fontSize:10, lineHeight:1.4 }}>{desc}</div>
+              <div style={{ color: unlocked ? "#0f172a" : "#64748b", fontSize: 12, fontWeight: 700, marginBottom: 4, lineHeight: 1.3 }}>{label}</div>
+              <div style={{ color: "#64748b", fontSize: 10, lineHeight: 1.4 }}>{desc}</div>
               {unlocked && (
-                <div style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:4, background:`${color}15`, border:`1px solid ${color}30`, borderRadius:20, padding:"2px 8px" }}>
+                <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 4, background: `${color}15`, border: `1px solid ${color}30`, borderRadius: 20, padding: "2px 8px" }}>
                   <CheckCircle size={9} color={color} />
-                  <span style={{ fontSize:9, color, fontWeight:700 }}>Unlocked</span>
+                  <span style={{ fontSize: 9, color, fontWeight: 700 }}>Unlocked</span>
                 </div>
               )}
             </div>
@@ -2688,7 +2824,7 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     setFetchError(null);
 
@@ -2726,7 +2862,7 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
   );
 
   const isFirebaseConnected = typeof window !== "undefined" && !!window._firebaseDb;
-  const medals = ["🥇","🥈","🥉"];
+  const medals = ["🥇", "🥈", "🥉"];
 
   return (
     <div>
@@ -2737,32 +2873,36 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       `}</style>
 
       {/* Header row */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h2 style={{ margin:"0 0 4px", color:"#0f172a", fontSize:22, fontWeight:700, letterSpacing:-0.4 }}>Leaderboard</h2>
-          <p style={{ margin:0, color:"#64748b", fontSize:13 }}>Live rankings from all students</p>
+          <h2 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Leaderboard</h2>
+          <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>Live rankings from all students</p>
         </div>
-        <button onClick={() => setRefreshKey(k => k+1)} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:20, border:"1px solid #f1f5f9", background:"transparent", color:"#64748b", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Sora',sans-serif", transition:"all 0.15s" }}>
+        <button onClick={() => setRefreshKey(k => k + 1)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 20, border: "1px solid #f1f5f9", background: "transparent", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.15s" }}>
           ↻ Refresh
         </button>
       </div>
 
       {/* Status badge */}
-      <div style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 12px", borderRadius:20, marginBottom:18,
+      <div style={{
+        display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 20, marginBottom: 18,
         background: isFirebaseConnected ? "#e2e8f0" : "#e2e8f0",
-        border: `1px solid ${isFirebaseConnected ? "rgba(16,185,129,0.28)" : "rgba(245,158,11,0.28)"}` }}>
-        <div style={{ width:7, height:7, borderRadius:"50%", background: isFirebaseConnected ? "#10b981" : "#f59e0b" }} />
-        <span style={{ fontSize:11, fontWeight:600, color: isFirebaseConnected ? "#10b981" : "#f59e0b" }}>
+        border: `1px solid ${isFirebaseConnected ? "rgba(16,185,129,0.28)" : "rgba(245,158,11,0.28)"}`
+      }}>
+        <div style={{ width: 7, height: 7, borderRadius: "50%", background: isFirebaseConnected ? "#10b981" : "#f59e0b" }} />
+        <span style={{ fontSize: 11, fontWeight: 600, color: isFirebaseConnected ? "#10b981" : "#f59e0b" }}>
           {isFirebaseConnected ? "Live · Firebase connected" : "Preview mode"}
         </span>
       </div>
 
       {/* Sort tabs */}
-      <div style={{ display:"flex", gap:4, marginBottom:20, background:"#ffffff", borderRadius:10, padding:4, width:"fit-content" }}>
-        {[{id:"streak",label:"Streak",icon:<Flame size={13}/>},{id:"accuracy",label:"Accuracy",icon:<Target size={13}/>}].map(t => (
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4, width: "fit-content" }}>
+        {[{ id: "streak", label: "Streak", icon: <Flame size={13} /> }, { id: "accuracy", label: "Accuracy", icon: <Target size={13} /> }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding:"7px 18px", borderRadius:8, border:"none", cursor:"pointer", fontFamily:"'Sora',sans-serif", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:5, transition:"all 0.15s",
-              background: tab===t.id ? "#2563eb" : "transparent", color: tab===t.id ? "#ffffff" : "#64748b" }}>
+            style={{
+              padding: "7px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
+              background: tab === t.id ? "#2563eb" : "transparent", color: tab === t.id ? "#ffffff" : "#64748b"
+            }}>
             {t.icon} {t.label}
           </button>
         ))}
@@ -2770,66 +2910,70 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
 
       {/* Error state */}
       {fetchError && !loading && (
-        <div style={{ background:"#e2e8f0", border:"1px solid rgba(239,68,68,0.22)", borderRadius:12, padding:"12px 16px", marginBottom:16, color:"#fca5a5", fontSize:12 }}>
+        <div style={{ background: "#e2e8f0", border: "1px solid rgba(239,68,68,0.22)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, color: "#fca5a5", fontSize: 12 }}>
           ⚠️ {fetchError} — check your Firestore security rules allow reads on the <code>leaderboard</code> collection.
         </div>
       )}
 
       {/* Loading */}
       {loading ? (
-        <div style={{ textAlign:"center", padding:60 }}>
-          <div style={{ width:34, height:34, border:"3px solid rgba(37,99,235,0.1)", borderTop:"3px solid #2563eb", borderRadius:"50%", margin:"0 auto 12px", animation:"spin 0.8s linear infinite" }} />
-          <p style={{ color:"#64748b", fontSize:13 }}>Fetching live rankings…</p>
+        <div style={{ textAlign: "center", padding: 60 }}>
+          <div style={{ width: 34, height: 34, border: "3px solid rgba(37,99,235,0.1)", borderTop: "3px solid #2563eb", borderRadius: "50%", margin: "0 auto 12px", animation: "spin 0.8s linear infinite" }} />
+          <p style={{ color: "#64748b", fontSize: 13 }}>Fetching live rankings…</p>
         </div>
       ) : sorted.length === 0 ? (
-        <div style={{ textAlign:"center", padding:"50px 20px", background:"#ffffff", border:"1px solid #ffffff", borderRadius:16 }}>
+        <div style={{ textAlign: "center", padding: "50px 20px", background: "#ffffff", border: "1px solid #ffffff", borderRadius: 16 }}>
           <Trophy size={34} color="rgba(37,99,235,0.15)" />
-          <p style={{ color:"#64748b", fontSize:14, margin:"12px 0 4px" }}>No rankings yet</p>
-          <p style={{ color:"rgba(37,99,235,0.1)", fontSize:12, margin:0 }}>Complete a paper to appear here!</p>
+          <p style={{ color: "#64748b", fontSize: 14, margin: "12px 0 4px" }}>No rankings yet</p>
+          <p style={{ color: "rgba(37,99,235,0.1)", fontSize: 12, margin: 0 }}>Complete a paper to appear here!</p>
         </div>
       ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sorted.map((student, i) => {
             const isYou = student.uid === user?.uid;
             return (
               <div key={student.id || student.uid || i} className="lb-row"
-                style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 18px", borderRadius:12, animationDelay:`${i*0.035}s`,
+                style={{
+                  display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: 12, animationDelay: `${i * 0.035}s`,
                   background: isYou ? "rgba(99,102,241,0.09)" : "#ffffff",
-                  border: `1px solid ${isYou ? "rgba(99,102,241,0.33)" : "#e2e8f0"}` }}>
+                  border: `1px solid ${isYou ? "rgba(99,102,241,0.33)" : "#e2e8f0"}`
+                }}>
 
                 {/* Rank */}
-                <div style={{ width:34, height:34, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize: i < 3 ? 18 : 13, fontWeight:700, color: i < 3 ? "#ffffff" : "#0f172a", fontFamily:"'Space Mono',monospace",
-                  background: i===0 ? "linear-gradient(135deg,#f59e0b,#ef4444)" : i===1 ? "linear-gradient(135deg,#94a3b8,#64748b)" : i===2 ? "linear-gradient(135deg,#cd7c2f,#92400e)" : "#e2e8f0" }}>
-                  {i < 3 ? medals[i] : `#${i+1}`}
+                <div style={{
+                  width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: i < 3 ? 18 : 13, fontWeight: 700, color: i < 3 ? "#ffffff" : "#0f172a", fontFamily: "'Space Mono',monospace",
+                  background: i === 0 ? "linear-gradient(135deg,#f59e0b,#ef4444)" : i === 1 ? "linear-gradient(135deg,#94a3b8,#64748b)" : i === 2 ? "linear-gradient(135deg,#cd7c2f,#92400e)" : "#e2e8f0"
+                }}>
+                  {i < 3 ? medals[i] : `#${i + 1}`}
                 </div>
 
                 {/* Name */}
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ color: isYou ? "#3b82f6" : "#0f172a", fontSize:14, fontWeight:600, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: isYou ? "#3b82f6" : "#0f172a", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     {student.name || "Anonymous"}
-                    {isYou && <span style={{ fontSize:9, color:"#2563eb", background:"#e2e8f0", border:"1px solid rgba(99,102,241,0.28)", padding:"2px 7px", borderRadius:20, fontWeight:700 }}>YOU</span>}
+                    {isYou && <span style={{ fontSize: 9, color: "#2563eb", background: "#e2e8f0", border: "1px solid rgba(99,102,241,0.28)", padding: "2px 7px", borderRadius: 20, fontWeight: 700 }}>YOU</span>}
                   </div>
-                  <div style={{ color:"#64748b", fontSize:11, marginTop:2 }}>
+                  <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>
                     Last active: {student.lastActive || "—"}
                   </div>
                 </div>
 
                 {/* Stats */}
-                <div style={{ display:"flex", gap:18, flexShrink:0 }}>
-                  <div style={{ textAlign:"center" }}>
-                    <div style={{ color:"#f97316", fontFamily:"'Space Mono',monospace", fontWeight:700, fontSize:15, display:"flex", alignItems:"center", gap:3 }}>
-                      {student.streak ?? 0}<Flame size={12} color="#f97316"/>
+                <div style={{ display: "flex", gap: 18, flexShrink: 0 }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ color: "#f97316", fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 3 }}>
+                      {student.streak ?? 0}<Flame size={12} color="#f97316" />
                     </div>
-                    <div style={{ color:"#64748b", fontSize:9 }}>STREAK</div>
+                    <div style={{ color: "#64748b", fontSize: 9 }}>STREAK</div>
                   </div>
-                  <div style={{ textAlign:"center" }}>
-                    <div style={{ color:"#10b981", fontFamily:"'Space Mono',monospace", fontWeight:700, fontSize:15 }}>{student.accuracy ?? 0}%</div>
-                    <div style={{ color:"#64748b", fontSize:9 }}>SCORE</div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ color: "#10b981", fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 15 }}>{student.accuracy ?? 0}%</div>
+                    <div style={{ color: "#64748b", fontSize: 9 }}>SCORE</div>
                   </div>
-                  <div style={{ textAlign:"center" }}>
-                    <div style={{ color:"#2563eb", fontFamily:"'Space Mono',monospace", fontWeight:700, fontSize:15 }}>{student.papers ?? 0}</div>
-                    <div style={{ color:"#64748b", fontSize:9 }}>PAPERS</div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ color: "#2563eb", fontFamily: "'Space Mono',monospace", fontWeight: 700, fontSize: 15 }}>{student.papers ?? 0}</div>
+                    <div style={{ color: "#64748b", fontSize: 9 }}>PAPERS</div>
                   </div>
                 </div>
               </div>
@@ -2839,7 +2983,7 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       )}
 
       {!loading && sorted.length > 0 && (
-        <p style={{ color:"rgba(37,99,235,0.15)", fontSize:11, textAlign:"center", marginTop:16 }}>
+        <p style={{ color: "rgba(37,99,235,0.15)", fontSize: 11, textAlign: "center", marginTop: 16 }}>
           {sorted.length} student{sorted.length !== 1 ? "s" : ""} ranked · press Refresh for latest data
         </p>
       )}
@@ -2934,23 +3078,23 @@ function SyllabusPage() {
       `}</style>
 
       {/* Header */}
-      <div className="syl-fade" style={{ marginBottom:22 }}>
-        <h2 style={{ margin:"0 0 4px", color:"#0f172a", fontSize:22, fontWeight:700, letterSpacing:-0.4 }}>Syllabus</h2>
-        <p style={{ margin:0, color:"#64748b", fontSize:13 }}>Complete TG EAPCET chapter-by-chapter breakdown</p>
+      <div className="syl-fade" style={{ marginBottom: 22 }}>
+        <h2 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Syllabus</h2>
+        <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>Complete TG EAPCET chapter-by-chapter breakdown</p>
       </div>
 
       {/* Subject Tabs */}
-      <div className="syl-fade" style={{ display:"flex", gap:8, marginBottom:22, flexWrap:"wrap" }}>
+      <div className="syl-fade" style={{ display: "flex", gap: 8, marginBottom: 22, flexWrap: "wrap" }}>
         {subjects.map(s => {
           const isActive = s === active;
           const c = syllabus[s].color;
           return (
             <button key={s} onClick={() => setActive(s)} style={{
-              padding:"8px 18px", borderRadius:22, border:`1px solid ${isActive ? c+"55" : "#ffffff"}`,
+              padding: "8px 18px", borderRadius: 22, border: `1px solid ${isActive ? c + "55" : "#ffffff"}`,
               background: isActive ? `${c}18` : "transparent",
               color: isActive ? c : "#64748b",
-              fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"'Sora',sans-serif",
-              transition:"all 0.15s", display:"flex", alignItems:"center", gap:6,
+              fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Sora',sans-serif",
+              transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6,
             }}>
               {syllabus[s].icon} {s}
             </button>
@@ -2959,23 +3103,23 @@ function SyllabusPage() {
       </div>
 
       {/* Stats bar */}
-      <div className="syl-fade" style={{ display:"flex", gap:10, marginBottom:18, background:`${color}10`, border:`1px solid ${color}28`, borderRadius:12, padding:"10px 16px", alignItems:"center" }}>
-        <span style={{ color, fontSize:20 }}>{icon}</span>
+      <div className="syl-fade" style={{ display: "flex", gap: 10, marginBottom: 18, background: `${color}10`, border: `1px solid ${color}28`, borderRadius: 12, padding: "10px 16px", alignItems: "center" }}>
+        <span style={{ color, fontSize: 20 }}>{icon}</span>
         <div>
-          <span style={{ color:"#0f172a", fontSize:13, fontWeight:700 }}>{active}</span>
-          <span style={{ color:"#64748b", fontSize:12, marginLeft:8 }}>{units.length} units  •  {units.reduce((a,u)=>a+u.topics.length,0)} topics</span>
+          <span style={{ color: "#0f172a", fontSize: 13, fontWeight: 700 }}>{active}</span>
+          <span style={{ color: "#64748b", fontSize: 12, marginLeft: 8 }}>{units.length} units  •  {units.reduce((a, u) => a + u.topics.length, 0)} topics</span>
         </div>
       </div>
 
       {/* Units Grid */}
-      <div className="syl-grid syl-fade" style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12 }}>
+      <div className="syl-grid syl-fade" style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
         {units.map((unit, i) => (
-          <div key={i} className="syl-unit-card" style={{ animationDelay:`${i*0.03}s` }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-              <div style={{ width:26, height:26, borderRadius:7, background:`${color}18`, border:`1px solid ${color}30`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <span style={{ fontFamily:"'Space Mono',monospace", fontSize:10, fontWeight:700, color }}>{String(i+1).padStart(2,"0")}</span>
+          <div key={i} className="syl-unit-card" style={{ animationDelay: `${i * 0.03}s` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: `${color}18`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 10, fontWeight: 700, color }}>{String(i + 1).padStart(2, "0")}</span>
               </div>
-              <span style={{ color:"#0f172a", fontSize:13, fontWeight:600, lineHeight:1.3 }}>{unit.name}</span>
+              <span style={{ color: "#0f172a", fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{unit.name}</span>
             </div>
             <div>
               {unit.topics.map((t, j) => (
