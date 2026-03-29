@@ -107,7 +107,7 @@ const GlobalStyles = () => (
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;600;700&display=swap');
     
     .auth-container { 
-      min-height: 100vh; background: #f6fafe;
+      min-height: 100vh; background: #f0f7ff;
       display: flex; align-items: center; justify-content: center;
       font-family: 'Inter', 'Sora', sans-serif;
       position: relative; overflow: hidden;
@@ -116,31 +116,31 @@ const GlobalStyles = () => (
     
     .auth-card { 
       width: 460px; max-width: 92%; padding: 48px 40px; 
-      background: #ffffff; border: 1px solid #eef2f6; 
+      background: #ffffff; border: 1px solid #e2e8f0; 
       border-radius: 20px; position: relative; z-index: 10;
-      box-shadow: 0 20px 50px rgba(0, 21, 42, 0.04);
+      box-shadow: 0 20px 50px rgba(37, 99, 235, 0.08);
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       box-sizing: border-box;
     }
 
     .auth-input { transition: all 0.2s; border-radius: 12px; }
-    .auth-input:focus { border-color: #102a43 !important; box-shadow: 0 0 0 4px rgba(16, 42, 67, 0.1); outline: none; background: #ffffff !important; }
+    .auth-input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1); outline: none; background: #ffffff !important; }
     .auth-input::placeholder { color: #94a3b8; font-weight: 400; }
 
     .auth-tab-btn { flex: 1; padding: 12px 0; border: none; border-radius: 10px; cursor: pointer; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.2s ease; }
-    .auth-tab-btn.active { background: #00152a!important; color: #ffffff!important; }
+    .auth-tab-btn.active { background: #2563eb!important; color: #ffffff!important; }
     .auth-tab-btn:not(.active) { background: transparent; color: #475569; }
     .auth-tab-btn:not(.active):hover { background: #f0f4f8; }
 
     .btn-primary { 
       width: 100%; padding: 15px; 
-      background: linear-gradient(135deg, #00152a 0%, #102a43 100%); 
+      background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); 
       border: none; border-radius: 99px; color: #ffffff; 
       font-size: 15px; font-weight: 700; cursor: pointer; 
       font-family: 'Inter', sans-serif; transition: all 0.2s; 
-      margin-bottom: 20px; box-shadow: 0 8px 20px rgba(0, 21, 42, 0.15); 
+      margin-bottom: 20px; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2); 
     }
-    .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(0, 21, 42, 0.2); opacity: 0.95; }
+    .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(37, 99, 235, 0.25); opacity: 0.95; }
     .btn-primary:active:not(:disabled) { transform: translateY(0); }
     .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
@@ -271,6 +271,7 @@ export default function App() {
   if (bootstrapping) {
     return (
       <div style={{ minHeight: "100vh", background: "#f8faff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         <div style={{ width: 40, height: 40, border: "3px solid rgba(37,99,235,0.1)", borderTop: "3px solid #2563eb", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
       </div>
     );
@@ -530,8 +531,8 @@ function AuthPage({ onLogin }) {
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: "linear-gradient(135deg, #00152a, #102a43)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "#ffffff" }}>E</div>
-            <span style={{ fontSize: 24, fontWeight: 800, color: "#171c1f", letterSpacing: -0.8 }}>EMCET<span style={{ color: "#102a43" }}>Pro</span></span>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "#ffffff" }}>E</div>
+            <span style={{ fontSize: 24, fontWeight: 800, color: "#171c1f", letterSpacing: -0.8 }}>EMCET<span style={{ color: "#2563eb" }}>Pro</span></span>
           </div>
           <p style={{ color: "#43474d", fontSize: 13, margin: 0, fontWeight: 500, letterSpacing: 0.2 }}>The Curated Intelligence Practice Platform</p>
         </div>
