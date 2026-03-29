@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit } from "firebase/firestore";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, onSnapshot } from "firebase/firestore";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithPopup, signInWithRedirect } from "firebase/auth";
 import { LayoutDashboard, FileText, TrendingUp, Trophy, BookOpen, Flame, CheckCircle, Star, BarChart2, Medal, Target, Zap, Award, Flag, Timer, PenTool, Check, X, SkipForward } from "lucide-react";
 
 // Firebase initialized in main.jsx and accessible via window._firebaseDb / window._firebaseAuth
@@ -116,10 +116,9 @@ export default function App() {
       if (firebaseUser) {
         setUser({
           uid: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
+          name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
           email: firebaseUser.email,
         });
-        // ← Restore to dashboard so the shell has content on reload
         setPage(prev => prev === "home" ? "dashboard" : prev);
       } else {
         setUser(null);
@@ -159,7 +158,12 @@ export default function App() {
     }
   }, [user]);
 
-  const saveSession = async (session) => {
+  const saveSession = async (rawSession) => {
+    // Firestore crashes if an object contains `undefined` values (which happens if a user
+    // skips a question, resulting in `userAnswer: undefined`, or optional fields like `topic`).
+    // This JSON stringify/parse completely removes all undefined keys.
+    const session = JSON.parse(JSON.stringify(rawSession));
+
     // Use functional updater to avoid stale closure over sessions
     let updated;
     setSessions(prev => {
@@ -200,8 +204,8 @@ export default function App() {
 
   if (bootstrapping) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0a0e1a", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: 40, height: 40, border: "3px solid rgba(99,102,241,0.2)", borderTop: "3px solid #6366f1", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+      <div style={{ minHeight: "100vh", background: "#f8faff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: 40, height: 40, border: "3px solid rgba(37,99,235,0.1)", borderTop: "3px solid #2563eb", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
       </div>
     );
   }
@@ -267,6 +271,57 @@ function AuthPage({ onLogin }) {
   const [pwd, setPwd] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [processingRedirect, setProcessingRedirect] = useState(
+    // Start in loading state if there might be a pending redirect
+    // (main.jsx already kicked off the promise before React mounted)
+    !!window._redirectResultPromise
+  );
+
+  // Handle Google redirect result — await the promise started in main.jsx
+  useEffect(() => {
+    const pending = window._redirectResultPromise;
+    if (!pending) return;
+
+    // Clear it so re-renders don't re-await
+    window._redirectResultPromise = null;
+
+    pending
+      .then((result) => {
+        if (result?.user) {
+          const u = result.user;
+          onLogin({
+            uid:   u.uid,
+            name:  u.displayName || u.email?.split("@")[0] || "User",
+            email: u.email,
+          });
+        } else {
+          // No pending redirect — show the login form
+          setProcessingRedirect(false);
+        }
+      })
+      .catch((e) => {
+        console.error("[getRedirectResult error]", e.code, e.message);
+        const msgs = {
+          "auth/operation-not-allowed":  "Google Sign-In is not enabled. Go to Firebase Console → Authentication → Sign-in method → Google → Enable.",
+          "auth/unauthorized-domain":    `Domain '${window.location.hostname}' not authorized. Add it in Firebase Console → Authentication → Settings → Authorized Domains.`,
+          "auth/account-exists-with-different-credential": "An account already exists with this email using a different sign-in method.",
+        };
+        if (e.code) setErr(msgs[e.code] || `Error [${e.code}]: ${e.message}`);
+        setProcessingRedirect(false);
+      });
+  }, []);
+
+  // Show a dedicated loading screen while processing redirect
+  if (processingRedirect) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f8faff", fontFamily: "'Sora', sans-serif", gap: 16 }}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={{ width: 44, height: 44, border: "3px solid #e2e8f0", borderTop: "3px solid #2563eb", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+        <p style={{ color: "#475569", fontSize: 14, fontWeight: 500, margin: 0 }}>Completing Google sign-in…</p>
+        <p style={{ color: "#94a3b8", fontSize: 12, margin: 0 }}>Please wait</p>
+      </div>
+    );
+  }
 
   const handle = async () => {
     if (!email || !pwd) { setErr("Please fill all fields"); return; }
@@ -307,50 +362,89 @@ function AuthPage({ onLogin }) {
     try {
       if (window._firebaseAuth) {
         const provider = new GoogleAuthProvider();
-        const cred = await signInWithPopup(window._firebaseAuth, provider);
-        onLogin({
-          uid:   cred.user.uid,
-          name:  cred.user.displayName || cred.user.email.split("@")[0],
-          email: cred.user.email,
-        });
+        provider.setCustomParameters({ prompt: 'select_account' });
+
+        try {
+          // Try popup first — fast, reliable, works on localhost & Vercel
+          const cred = await signInWithPopup(window._firebaseAuth, provider);
+          onLogin({
+            uid:   cred.user.uid,
+            name:  cred.user.displayName || cred.user.email?.split("@")[0] || "User",
+            email: cred.user.email,
+          });
+          return;
+        } catch (popupErr) {
+          // If popup was blocked by browser, automatically fall back to redirect
+          if (
+            popupErr.code === "auth/popup-blocked" ||
+            popupErr.code === "auth/popup-closed-by-user"
+          ) {
+            console.warn("[Auth] Popup blocked — falling back to redirect flow");
+            await signInWithRedirect(window._firebaseAuth, provider);
+            return; // Page navigates away
+          }
+          // For all other popup errors, bubble up to outer catch
+          throw popupErr;
+        }
       } else {
+        // Mock fallback for local dev without Firebase
         await new Promise(r => setTimeout(r, 900));
         onLogin({ uid: "mock_google_id", name: "Google User", email: "google@example.com" });
       }
     } catch (e) {
-      setErr(e.message || "Google Sign-In failed.");
+      console.error("[Google Auth Error] code:", e.code, "message:", e.message);
+      const errorMessages = {
+        "auth/operation-not-allowed":   "Google Sign-In is not enabled. Go to Firebase Console → Authentication → Sign-in method → Google → Enable it.",
+        "auth/unauthorized-domain":     `Domain not authorized. Add '${window.location.hostname}' to Firebase Console → Authentication → Settings → Authorized Domains.`,
+        "auth/cancelled-popup-request": "Sign-in was cancelled. Please try again.",
+        "auth/invalid-api-key":         "Firebase API key is invalid. Check your .env file.",
+        "auth/network-request-failed":  "Network error. Please check your internet connection.",
+        "auth/account-exists-with-different-credential": "An account already exists with this email. Try signing in with email/password.",
+      };
+      setErr(
+        errorMessages[e.code] ||
+        `Error [${e.code || 'unknown'}]: ${e.message || 'Google Sign-In failed. Please try again.'}`
+      );
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
     <div style={{
-      minHeight: "100vh", background: "#0a0e1a",
+      minHeight: "100vh", background: "#f8faff",
       display: "flex", alignItems: "center", justifyContent: "center",
       fontFamily: "'Sora', sans-serif",
-      backgroundImage: "radial-gradient(circle at 20% 50%, #1a1040 0%, transparent 50%), radial-gradient(circle at 80% 20%, #0d2040 0%, transparent 40%)",
+      backgroundImage: "radial-gradient(circle at 10% 10%, rgba(37,99,235,0.06) 0%, transparent 40%), radial-gradient(circle at 90% 90%, rgba(37,99,235,0.06) 0%, transparent 40%)",
+      padding: 24
     }}>
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+        .auth-input { transition: all 0.2s; }
+        .auth-input:focus { border-color: #3b82f6 !important; box-shadow: 0 0 0 4px rgba(59,130,246,0.15); outline: none; background: #ffffff !important; }
+        .auth-input::placeholder { color: #94a3b8; font-weight: 400; }
+        .auth-google-btn { transition: all 0.2s; }
+        .auth-google-btn:hover:not(:disabled) { background: #f8faff !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.04); border-color: #cbd5e1 !important; }
+      `}</style>
       {/* Decorative circles */}
-      <div style={{ position: "fixed", top: "-100px", right: "-100px", width: 400, height: 400, borderRadius: "50%", border: "1px solid rgba(99,102,241,0.15)", pointerEvents: "none" }} />
-      <div style={{ position: "fixed", bottom: "-150px", left: "-100px", width: 500, height: 500, borderRadius: "50%", border: "1px solid rgba(99,102,241,0.08)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: "-100px", right: "-100px", width: 400, height: 400, borderRadius: "50%", border: "1.5px solid rgba(37,99,235,0.08)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: "-150px", left: "-100px", width: 500, height: 500, borderRadius: "50%", border: "1.5px solid rgba(37,99,235,0.08)", pointerEvents: "none" }} />
 
-      <div style={{ width: 420, padding: "48px 40px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, backdropFilter: "blur(20px)", boxShadow: "0 32px 80px rgba(0,0,0,0.4)" }}>
+      <div style={{ width: "100%", maxWidth: 440, padding: "48px 40px", background: "#ffffff", border: "1px solid #f1f5f9", borderRadius: 24, boxShadow: "0 24px 64px rgba(15,23,42,0.04), 0 8px 16px rgba(15,23,42,0.02)", position: "relative", zIndex: 10 }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 36 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: "#fff" }}>E</div>
-            <span style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: -0.5 }}>EMCET<span style={{ color: "#6366f1" }}>Pro</span></span>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: "#ffffff" }}>E</div>
+            <span style={{ fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: -0.5 }}>EMCET<span style={{ color: "#2563eb" }}>Pro</span></span>
           </div>
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 13, margin: 0 }}>TG EMCET Practice Platform</p>
+          <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>TG EMCET Practice Platform</p>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 4, marginBottom: 28 }}>
+        <div style={{ display: "flex", background: "#ffffff", borderRadius: 12, padding: 4, marginBottom: 28 }}>
           {["login", "signup"].map(m => (
             <button key={m} onClick={() => { setMode(m); setErr(""); }}
               style={{ flex: 1, padding: "10px 0", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, transition: "all 0.2s",
-                background: mode === m ? "#6366f1" : "transparent", color: mode === m ? "#fff" : "rgba(255,255,255,0.5)" }}>
+                background: mode === m ? "#2563eb" : "transparent", color: mode === m ? "#ffffff" : "#334155" }}>
               {m === "login" ? "Sign In" : "Sign Up"}
             </button>
           ))}
@@ -366,23 +460,32 @@ function AuthPage({ onLogin }) {
         {err && <p style={{ color: "#f87171", fontSize: 12, marginBottom: 12 }}>{err}</p>}
 
         <button onClick={handle} disabled={loading}
-          style={{ width: "100%", padding: "14px", background: loading ? "rgba(99,102,241,0.5)" : "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.2s", marginBottom: 16 }}>
+          style={{ width: "100%", padding: "14px", background: loading ? "rgba(99,102,241,0.5)" : "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 12, color: "#ffffff", fontSize: 15, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.2s", marginBottom: 16, boxShadow: loading ? "none" : "0 8px 16px rgba(37,99,235,0.2)" }}>
           {loading ? "Please wait..." : mode === "login" ? "Sign In →" : "Create Account →"}
         </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
-          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>OR</span>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
+          <div style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+          <span style={{ color: "#64748b", fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>OR</span>
+          <div style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
         </div>
 
-        <button onClick={handleGoogleLogin} disabled={loading}
-          style={{ width: "100%", padding: "14px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.2s", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          Continue with Google
+        <button className="auth-google-btn" onClick={handleGoogleLogin} disabled={loading}
+          style={{ width: "100%", padding: "14px", background: "#ffffff", border: "1.5px solid #e2e8f0", borderRadius: 12, color: "#0f172a", fontSize: 14, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+          {loading ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b" }}>
+              <span style={{ width: 16, height: 16, border: "2px solid #e2e8f0", borderTop: "2px solid #2563eb", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+              Connecting…
+            </span>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              Continue with Google
+            </>
+          )}
         </button>
 
-        <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, textAlign: "center", margin: 0 }}>
+        <p style={{ color: "#64748b", fontSize: 12, textAlign: "center", margin: 0 }}>
           Firebase Authentication • Your data is secure
         </p>
       </div>
@@ -392,10 +495,10 @@ function AuthPage({ onLogin }) {
 
 function Field({ label, value, onChange, placeholder, type = "text" }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <label style={{ display: "block", color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        style={{ width: "100%", padding: "12px 14px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#fff", fontSize: 14, fontFamily: "'Sora',sans-serif", boxSizing: "border-box", outline: "none" }} />
+    <div style={{ marginBottom: 18 }}>
+      <label style={{ display: "block", color: "#475569", fontSize: 11, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</label>
+      <input className="auth-input" type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        style={{ width: "100%", padding: "14px 16px", background: "#f8faff", border: "1.5px solid #e2e8f0", borderRadius: 12, color: "#0f172a", fontSize: 14, fontWeight: 500, fontFamily: "'Sora',sans-serif", boxSizing: "border-box" }} />
     </div>
   );
 }
@@ -414,39 +517,35 @@ function Shell({ user, page, setPage, onLogout, children }) {
     <div className="app-layout">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
-        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 2px; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #64748b; border-radius: 2px; }
         * { box-sizing: border-box; }
         
         /* Responsive Layouts */
-        .app-layout { min-height: 100vh; background: #0a0e1a; font-family: 'Sora', sans-serif; display: flex; flex-direction: row; }
+        .app-layout { min-height: 100vh; background: #f8faff; font-family: 'Sora', sans-serif; display: flex; flex-direction: row; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .sidebar { width: 220px; background: rgba(255,255,255,0.02); border-right: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; padding: 24px 16px; flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; z-index: 50; }
+        .sidebar { width: 220px; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; padding: 24px 16px; flex-shrink: 0; position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto; z-index: 50; }
+        .nav-list { display: flex; flex-direction: column; gap: 4px; flex: 1; width: 100%; }
+        .nav-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: none; cursor: pointer; font-family: 'Sora', sans-serif; font-size: 13px; font-weight: 500; transition: all 0.15s; }
         .main-content { flex: 1; min-width: 0; overflow-y: auto; padding: 32px 20px; }
         .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-        .exam-layout { display: flex; flex: 1; overflow: hidden; flex-direction: row; }
-        .exam-main { flex: 1; padding: 32px 20px; overflow-y: auto; }
-        .exam-side { width: 260px; background: rgba(255,255,255,0.02); border-left: 1px solid rgba(255,255,255,0.06); padding: 20px; overflow-y: auto; flex-shrink: 0; }
-        .nav-list { display: flex; flex-direction: column; flex: 1; }
-        
         @media (max-width: 900px) {
           .app-layout { flex-direction: column; }
-          .sidebar { width: 100%; height: auto; flex-direction: column; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); position: relative; padding: 16px; }
-          .nav-list { flex-direction: row; flex-wrap: wrap; gap: 8px; margin-bottom: 0px; flex: unset; }
-          .nav-list > button { width: auto !important; margin-bottom: 0 !important; }
+          .sidebar { width: 100%; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; border-right: none; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; padding: 12px 16px; z-index: 100; }
+          .sidebar-logo { order: 1; margin-bottom: 0 !important; padding-left: 0 !important; }
+          .sidebar-profile { order: 2; border-top: none !important; padding-top: 0 !important; display: flex; align-items: center; margin-left: auto; }
+          .sidebar-profile-info { display: none !important; }
+          .sidebar-logout { width: auto !important; padding: 8px 14px !important; margin: 0 !important; }
+          .nav-list { order: 3; flex: 0 0 100% !important; margin-top: 12px; margin-bottom: 0; flex-direction: row !important; flex-wrap: wrap !important; gap: 8px !important; align-items: center; }
+          .nav-btn { flex: 1 1 auto !important; width: auto !important; margin: 0 !important; padding: 8px 12px !important; justify-content: center !important; }
           .main-content { padding: 20px 12px; }
           .grid-4 { grid-template-columns: repeat(2, 1fr); }
           .grid-2 { grid-template-columns: 1fr; }
-          .exam-layout { flex-direction: column; overflow: visible; height: auto; }
-          .exam-main { padding: 20px 12px; overflow: visible; order: 2; height: auto; }
-          .exam-side { width: 100%; border-left: none; border-bottom: 1px solid rgba(255,255,255,0.06); height: auto; max-height: unset; order: 1; padding: 16px; }
           .analysis-top { flex-direction: column; align-items: center; text-align: center; }
-          .exam-header { padding: 12px 16px !important; flex-wrap: wrap; gap: 12px; }
-          .exam-header-right { width: 100%; justify-content: space-between; }
         }
         
-        .question-text { color: #fff; font-size: 17px; line-height: 1.7; margin-bottom: 28px; font-weight: 500; }
+        .question-text { color: #0f172a; font-size: 17px; line-height: 1.7; margin-bottom: 28px; font-weight: 500; }
         .option-btn { text-align: left; padding: 14px 18px; border-radius: 12px; font-size: 14px; cursor: pointer; font-family: 'Sora', sans-serif; transition: all 0.15s; display: flex; align-items: center; gap: 12px; }
         
         @media (max-width: 600px) {
@@ -462,32 +561,32 @@ function Shell({ user, page, setPage, onLogout, children }) {
 
       {/* Sidebar */}
       <div className="sidebar">
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 36, paddingLeft: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "#fff" }}>E</div>
-          <span style={{ fontSize: 18, fontWeight: 700, color: "#fff", letterSpacing: -0.5 }}>EMCET<span style={{ color: "#6366f1" }}>Pro</span></span>
+        <div className="sidebar-logo" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 36, paddingLeft: 8 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "#ffffff" }}>E</div>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", letterSpacing: -0.5 }}>EMCET<span style={{ color: "#2563eb" }}>Pro</span></span>
         </div>
         <nav className="nav-list">
           {navItems.map(item => (
-            <button key={item.id} onClick={() => setPage(item.id)}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 500, marginBottom: 2, transition: "all 0.15s",
-                background: page === item.id ? "rgba(99,102,241,0.15)" : "transparent",
-                color: page === item.id ? "#a5b4fc" : "rgba(255,255,255,0.45)",
-                borderLeft: page === item.id ? "2px solid #6366f1" : "2px solid transparent" }}>
+            <button key={item.id} className="nav-btn" onClick={() => setPage(item.id)}
+              style={{
+                background: page === item.id ? "#e2e8f0" : "transparent",
+                color: page === item.id ? "#3b82f6" : "#475569",
+                borderLeft: page === item.id ? "2.5px solid #2563eb" : "2.5px solid transparent" }}>
               <span>{item.icon}</span> {item.label}
             </button>
           ))}
         </nav>
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", marginBottom: 8 }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>
+        <div className="sidebar-profile" style={{ borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
+          <div className="sidebar-profile-info" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", marginBottom: 8 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#ffffff" }}>
               {user?.name?.[0]?.toUpperCase()}
             </div>
             <div>
-              <p style={{ margin: 0, color: "#fff", fontSize: 12, fontWeight: 600 }}>{user?.name}</p>
-              <p style={{ margin: 0, color: "rgba(255,255,255,0.35)", fontSize: 10 }}>Student</p>
+              <p style={{ margin: 0, color: "#0f172a", fontSize: 12, fontWeight: 600 }}>{user?.name}</p>
+              <p style={{ margin: 0, color: "#64748b", fontSize: 10 }}>Student</p>
             </div>
           </div>
-          <button onClick={onLogout} style={{ width: "100%", padding: "8px 12px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>Sign Out</button>
+          <button className="sidebar-logout" onClick={onLogout} style={{ width: "100%", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 8, background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>Sign Out</button>
         </div>
       </div>
 
@@ -508,15 +607,15 @@ function Shell({ user, page, setPage, onLogout, children }) {
 //   return (
 //     <div>
 //       <div style={{ marginBottom: 28 }}>
-//         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: -0.5 }}>Welcome back! <span style={{display:"inline-block",verticalAlign:"middle"}}><Flame color="#f97316" size={26} /></span></h1>
-//         <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.4)", fontSize: 14 }}>Keep your streak alive — solve today's paper</p>
+//         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: "#0f172a", letterSpacing: -0.5 }}>Welcome back! <span style={{display:"inline-block",verticalAlign:"middle"}}><Flame color="#f97316" size={26} /></span></h1>
+//         <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 14 }}>Keep your streak alive — solve today's paper</p>
 //       </div>
 
 //       {/* Stats Row */}
 //       <div className="grid-4" style={{ marginBottom: 28 }}>
 //         <StatCard icon={<Flame size={28} color="#f97316" />} value={streak} label="Day Streak" accent="#f97316" />
 //         <StatCard icon={<CheckCircle size={28} color="#10b981" />} value={`${accuracy}%`} label="Accuracy" accent="#10b981" />
-//         <StatCard icon={<FileText size={28} color="#6366f1" />} value={totalPapers} label="Papers Done" accent="#6366f1" />
+//         <StatCard icon={<FileText size={28} color="#2563eb" />} value={totalPapers} label="Papers Done" accent="#2563eb" />
 //         <StatCard icon={<Star size={28} color="#f59e0b" />} value={solvedToday} label="Today's Papers" accent="#f59e0b" />
 //       </div>
 
@@ -527,18 +626,18 @@ function Shell({ user, page, setPage, onLogout, children }) {
 //       </div>
 
 //       {/* Today's Paper */}
-//       <div style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.1))", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 16, padding: 24, marginBottom: 24 }}>
+//       <div style={{ background: "linear-gradient(135deg, #e2e8f0, #f1f5f9)", border: "1px solid #64748b", borderRadius: 16, padding: 24, marginBottom: 24 }}>
 //         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 //           <div>
 //             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-//               <span style={{ background: "#f97316", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20 }}>TODAY'S CHALLENGE</span>
-//               {solvedToday > 0 && <span style={{ background: "#10b981", color: "#fff", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20 }}>✓ COMPLETED</span>}
+//               <span style={{ background: "#f97316", color: "#0f172a", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20 }}>TODAY'S CHALLENGE</span>
+//               {solvedToday > 0 && <span style={{ background: "#10b981", color: "#0f172a", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 20 }}>✓ COMPLETED</span>}
 //             </div>
-//             <h3 style={{ margin: "0 0 4px", color: "#fff", fontSize: 18, fontWeight: 700 }}>{todayPaper.label}</h3>
-//             <p style={{ margin: 0, color: "rgba(255,255,255,0.5)", fontSize: 13 }}>{todayPaper.questions} Questions • {todayPaper.duration} Minutes • {todayPaper.subjects.join(", ")}</p>
+//             <h3 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 18, fontWeight: 700 }}>{todayPaper.label}</h3>
+//             <p style={{ margin: 0, color: "#334155", fontSize: 13 }}>{todayPaper.questions} Questions • {todayPaper.duration} Minutes • {todayPaper.subjects.join(", ")}</p>
 //           </div>
 //           <button onClick={() => onStartPaper(todayPaper)}
-//             style={{ padding: "12px 24px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none", borderRadius: 12, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", whiteSpace: "nowrap" }}>
+//             style={{ padding: "12px 24px", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 12, color: "#0f172a", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", whiteSpace: "nowrap" }}>
 //             {solvedToday > 0 ? "Retake →" : "Start Now →"}
 //           </button>
 //         </div>
@@ -546,18 +645,18 @@ function Shell({ user, page, setPage, onLogout, children }) {
 
 //       {/* Recent Activity */}
 //       <div>
-//         <h3 style={{ color: "#fff", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Recent Activity</h3>
+//         <h3 style={{ color: "#0f172a", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Recent Activity</h3>
 //         {sessions.length === 0
-//           ? <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 13 }}>No sessions yet. Start your first paper!</p>
+//           ? <p style={{ color: "#64748b", fontSize: 13 }}>No sessions yet. Start your first paper!</p>
 //           : sessions.slice(-5).reverse().map((s, i) => (
-//             <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 10, marginBottom: 8, border: "1px solid rgba(255,255,255,0.05)" }}>
+//             <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#ffffff", borderRadius: 10, marginBottom: 8, border: "1px solid #ffffff" }}>
 //               <div>
-//                 <p style={{ margin: 0, color: "#fff", fontSize: 13, fontWeight: 500 }}>{s.paperLabel || "Practice Paper"}</p>
-//                 <p style={{ margin: 0, color: "rgba(255,255,255,0.35)", fontSize: 11 }}>{s.date}</p>
+//                 <p style={{ margin: 0, color: "#0f172a", fontSize: 13, fontWeight: 500 }}>{s.paperLabel || "Practice Paper"}</p>
+//                 <p style={{ margin: 0, color: "#64748b", fontSize: 11 }}>{s.date}</p>
 //               </div>
 //               <div style={{ textAlign: "right" }}>
 //                 <p style={{ margin: 0, color: s.correct / s.total >= 0.6 ? "#10b981" : "#f87171", fontSize: 14, fontWeight: 700 }}>{s.correct}/{s.total}</p>
-//                 <p style={{ margin: 0, color: "rgba(255,255,255,0.35)", fontSize: 11 }}>{Math.round((s.correct / s.total) * 100)}%</p>
+//                 <p style={{ margin: 0, color: "#64748b", fontSize: 11 }}>{Math.round((s.correct / s.total) * 100)}%</p>
 //               </div>
 //             </div>
 //           ))
@@ -569,11 +668,11 @@ function Shell({ user, page, setPage, onLogout, children }) {
 
 // function StatCard({ icon, value, label, accent }) {
 //   return (
-//     <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${accent}22`, borderRadius: 14, padding: "20px 18px", position: "relative", overflow: "hidden" }}>
+//     <div style={{ background: "#ffffff", border: `1px solid ${accent}22`, borderRadius: 14, padding: "20px 18px", position: "relative", overflow: "hidden" }}>
 //       <div style={{ position: "absolute", top: -10, right: -10, width: 60, height: 60, borderRadius: "50%", background: `${accent}11` }} />
 //       <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
 //       <div style={{ fontSize: 28, fontWeight: 700, color: accent, fontFamily: "'Space Mono', monospace", letterSpacing: -1 }}>{value}</div>
-//       <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{label}</div>
+//       <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{label}</div>
 //     </div>
 //   );
 // }
@@ -589,19 +688,19 @@ function Shell({ user, page, setPage, onLogout, children }) {
 //   }
 
 //   return (
-//     <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column" }}>
+//     <div style={{ background: "#ffffff", border: "1px solid #ffffff", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column" }}>
 //       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-//         <Flame size={18} color="#a5b4fc" />
-//         <h4 style={{ margin: 0, color: "#fff", fontSize: 15, fontWeight: 600 }}>Streak Calendar</h4>
+//         <Flame size={18} color="#3b82f6" />
+//         <h4 style={{ margin: 0, color: "#0f172a", fontSize: 15, fontWeight: 600 }}>Streak Calendar</h4>
 //       </div>
 //       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, flex: 1 }}>
 //         {days.map((d, i) => (
-//           <div key={i} title={d.str} style={{ width: "100%", aspectRatio: "1", borderRadius: 6, background: d.active ? "linear-gradient(135deg, #818cf8, #c084fc)" : "rgba(255,255,255,0.03)", border: d.active ? "none" : "1px solid rgba(255,255,255,0.05)", transition: "transform 0.2s, background 0.2s" }} onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
+//           <div key={i} title={d.str} style={{ width: "100%", aspectRatio: "1", borderRadius: 6, background: d.active ? "linear-gradient(135deg, #818cf8, #c084fc)" : "#ffffff", border: d.active ? "none" : "1px solid #ffffff", transition: "transform 0.2s, background 0.2s" }} onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
 //         ))}
 //       </div>
 //       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 16 }}>
 //         <div style={{ width: 8, height: 8, borderRadius: 3, background: "linear-gradient(135deg, #818cf8, #c084fc)" }} />
-//         <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 500 }}>Solved • Last 6 Weeks</span>
+//         <span style={{ color: "#64748b", fontSize: 11, fontWeight: 500 }}>Solved • Last 6 Weeks</span>
 //       </div>
 //     </div>
 //   );
@@ -620,27 +719,27 @@ function Shell({ user, page, setPage, onLogout, children }) {
 //   });
 
 //   const subjects = ["Physics", "Chemistry", "Mathematics"];
-//   const colors = { Physics: "#6366f1", Chemistry: "#10b981", Mathematics: "#f59e0b" };
+//   const colors = { Physics: "#2563eb", Chemistry: "#10b981", Mathematics: "#f59e0b" };
 
 //   return (
-//     <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 14, padding: 20 }}>
-//       <h4 style={{ margin: "0 0 16px", color: "#fff", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}><BarChart2 size={18} color="#6366f1" /> Subject Mastery</h4>
+//     <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20 }}>
+//       <h4 style={{ margin: "0 0 16px", color: "#0f172a", fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}><BarChart2 size={18} color="#2563eb" /> Subject Mastery</h4>
 //       {subjects.map(subj => {
 //         const data = subjectScores[subj];
 //         const pct = data ? Math.round((data.correct / data.total) * 100) : 0;
 //         return (
 //           <div key={subj} style={{ marginBottom: 12 }}>
 //             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-//               <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>{subj}</span>
+//               <span style={{ color: "#334155", fontSize: 12 }}>{subj}</span>
 //               <span style={{ color: colors[subj], fontSize: 12, fontWeight: 700, fontFamily: "'Space Mono',monospace" }}>{pct}%</span>
 //             </div>
-//             <div style={{ height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3 }}>
+//             <div style={{ height: 6, background: "#e2e8f0", borderRadius: 3 }}>
 //               <div style={{ height: "100%", width: `${pct}%`, background: colors[subj], borderRadius: 3, transition: "width 1s ease" }} />
 //             </div>
 //           </div>
 //         );
 //       })}
-//       {!sessions.length && <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, margin: 0 }}>Complete papers to see subject breakdown</p>}
+//       {!sessions.length && <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>Complete papers to see subject breakdown</p>}
 //     </div>
 //   );
 // }
@@ -676,27 +775,28 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
           position: relative; overflow: hidden;
           transition: transform 0.2s, box-shadow 0.2s;
         }
-        .stat-card-new:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,0.3); }
+        .stat-card-new:hover { transform: translateY(-3px); box-shadow: 0 10px 28px #64748b; }
 
         .activity-row {
           display: flex; align-items: center; justify-content: space-between;
           padding: 11px 14px; border-radius: 11px; margin-bottom: 7px;
-          border: 1px solid rgba(255,255,255,0.05);
-          background: rgba(255,255,255,0.022);
+          border: 1px solid #ffffff;
+          background: #ffffff;
           transition: background 0.15s, border-color 0.15s;
         }
-        .activity-row:hover { background: rgba(255,255,255,0.042); border-color: rgba(255,255,255,0.09); }
+        .activity-row:hover { background: #ffffff; border-color: #ffffff; }
 
         .today-card-btn {
           padding: 10px 20px;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          border: none; border-radius: 10px; color: #fff;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          border: none; border-radius: 10px; color: #ffffff;
+          box-shadow: 0 4px 12px rgba(37,99,235,0.25);
           font-size: 13px; font-weight: 700; cursor: pointer;
           font-family: 'Sora', sans-serif; white-space: nowrap;
-          transition: opacity 0.15s, transform 0.15s;
+          transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
           flex-shrink: 0;
         }
-        .today-card-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+        .today-card-btn:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(37,99,235,0.4); }
 
         /* ── Streak calendar ── */
         .sc-grid {
@@ -718,14 +818,14 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
 
       {/* ── Header ── */}
       <div className="dash-fade dash-f1" style={{ marginBottom: 22 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: -0.4, display: "flex", alignItems: "center", gap: 10 }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: -0.4, display: "flex", alignItems: "center", gap: 10 }}>
           Welcome back!
-          <span style={{ display: "inline-flex", padding: "3px 10px", background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.28)", borderRadius: 20, alignItems: "center", gap: 5 }}>
+          <span style={{ display: "inline-flex", padding: "3px 10px", background: "#f1f5f9", border: "1px solid rgba(249,115,22,0.28)", borderRadius: 20, alignItems: "center", gap: 5 }}>
             <Flame size={13} color="#f97316" />
             <span style={{ fontSize: 12, fontWeight: 700, color: "#f97316", fontFamily: "'Space Mono',monospace" }}>{streak}</span>
           </span>
         </h1>
-        <p style={{ margin: "4px 0 0", color: "rgba(255,255,255,0.36)", fontSize: 12 }}>
+        <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 12 }}>
           {solvedToday > 0
             ? `Great! You've solved ${solvedToday} paper${solvedToday > 1 ? "s" : ""} today. Keep it up!`
             : "Keep your streak alive — solve today's paper"}
@@ -736,14 +836,14 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
       <div className="grid-4 dash-fade dash-f2" style={{ marginBottom: 18 }}>
         <StatCard icon={<Flame size={20} color="#f97316" />}       value={streak}          label="Day Streak"   accent="#f97316" sublabel={streak >= 3 ? "🔥 On fire!" : "Build it up"} />
         <StatCard icon={<CheckCircle size={20} color="#10b981" />}  value={`${accuracy}%`}  label="Accuracy"     accent="#10b981" sublabel={accuracy >= 70 ? "Excellent" : accuracy >= 50 ? "Good" : "Needs work"} />
-        <StatCard icon={<FileText size={20} color="#6366f1" />}     value={totalPapers}     label="Papers Done"  accent="#6366f1" sublabel={`${solvedToday} today`} />
+        <StatCard icon={<FileText size={20} color="#2563eb" />}     value={totalPapers}     label="Papers Done"  accent="#2563eb" sublabel={`${solvedToday} today`} />
         <StatCard icon={<Star size={20} color="#f59e0b" />}         value={`${bestScore}%`} label="Best Score"   accent="#f59e0b" sublabel="All time high" />
       </div>
 
       {/* ── TODAY'S CHALLENGE — moved to top ── */}
       <div className="dash-fade dash-f3" style={{
         position: "relative", overflow: "hidden",
-        background: "linear-gradient(135deg, rgba(99,102,241,0.13) 0%, rgba(139,92,246,0.08) 100%)",
+        background: "linear-gradient(135deg, rgba(99,102,241,0.13) 0%, #e2e8f0 100%)",
         border: "1px solid rgba(99,102,241,0.26)", borderRadius: 16,
         padding: "18px 20px", marginBottom: 18,
       }}>
@@ -751,20 +851,20 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7, flexWrap: "wrap" }}>
-              <span style={{ background: "#f97316", color: "#fff", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 20, letterSpacing: 0.7, textTransform: "uppercase" }}>Today's Challenge</span>
+              <span style={{ background: "#f97316", color: "#ffffff", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 20, letterSpacing: 0.7, textTransform: "uppercase" }}>Today's Challenge</span>
               {solvedToday > 0 && (
-                <span style={{ background: "rgba(16,185,129,0.14)", border: "1px solid rgba(16,185,129,0.32)", color: "#10b981", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 20, letterSpacing: 0.7, textTransform: "uppercase" }}>✓ Completed</span>
+                <span style={{ background: "rgba(16,185,129,0.14)", border: "1px solid #64748b", color: "#10b981", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 20, letterSpacing: 0.7, textTransform: "uppercase" }}>✓ Completed</span>
               )}
             </div>
-            <h3 style={{ margin: "0 0 5px", color: "#fff", fontSize: 15, fontWeight: 700, letterSpacing: -0.2 }}>{todayPaper.label}</h3>
+            <h3 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 15, fontWeight: 700, letterSpacing: -0.2 }}>{todayPaper.label}</h3>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <span style={{ color: "rgba(255,255,255,0.42)", fontSize: 11, display: "flex", alignItems: "center", gap: 3 }}>
+              <span style={{ color: "#64748b", fontSize: 11, display: "flex", alignItems: "center", gap: 3 }}>
                 <FileText size={11} /> {todayPaper.questions} Questions
               </span>
-              <span style={{ color: "rgba(255,255,255,0.42)", fontSize: 11, display: "flex", alignItems: "center", gap: 3 }}>
+              <span style={{ color: "#64748b", fontSize: 11, display: "flex", alignItems: "center", gap: 3 }}>
                 <Timer size={11} /> {todayPaper.duration} mins
               </span>
-              <span style={{ color: "rgba(255,255,255,0.42)", fontSize: 11 }}>{todayPaper.subjects.join(" · ")}</span>
+              <span style={{ color: "#64748b", fontSize: 11 }}>{todayPaper.subjects.join(" · ")}</span>
             </div>
           </div>
           <button className="today-card-btn" onClick={() => onStartPaper(todayPaper)}>
@@ -782,19 +882,19 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
       {/* ── Recent Activity ── */}
       <div className="dash-fade dash-f5">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <h3 style={{ margin: 0, color: "#fff", fontSize: 14, fontWeight: 700 }}>Recent Activity</h3>
+          <h3 style={{ margin: 0, color: "#0f172a", fontSize: 14, fontWeight: 700 }}>Recent Activity</h3>
           {sessions.length > 0 && (
-            <span style={{ color: "rgba(255,255,255,0.28)", fontSize: 11 }}>{sessions.length} session{sessions.length !== 1 ? "s" : ""} total</span>
+            <span style={{ color: "#64748b", fontSize: 11 }}>{sessions.length} session{sessions.length !== 1 ? "s" : ""} total</span>
           )}
         </div>
 
         {sessions.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "28px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 13 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.18)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
-              <FileText size={18} color="#6366f1" />
+          <div style={{ textAlign: "center", padding: "28px 16px", background: "#ffffff", border: "1px solid #ffffff", borderRadius: 13 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 11, background: "#f1f5f9", border: "1px solid rgba(99,102,241,0.18)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
+              <FileText size={18} color="#2563eb" />
             </div>
-            <p style={{ color: "rgba(255,255,255,0.38)", fontSize: 12, margin: "0 0 3px" }}>No sessions yet</p>
-            <p style={{ color: "rgba(255,255,255,0.2)", fontSize: 11, margin: 0 }}>Start your first paper to see activity here</p>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 3px" }}>No sessions yet</p>
+            <p style={{ color: "rgba(37,99,235,0.1)", fontSize: 11, margin: 0 }}>Start your first paper to see activity here</p>
           </div>
         ) : (
           sessions.slice(-5).reverse().map((s, i) => {
@@ -803,21 +903,21 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
             return (
               <div key={i} className="activity-row">
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 9, background: good ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${good ? "rgba(16,185,129,0.22)" : "rgba(239,68,68,0.22)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 9, background: good ? "#f1f5f9" : "#f1f5f9", border: `1px solid ${good ? "rgba(16,185,129,0.22)" : "rgba(239,68,68,0.22)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {good ? <CheckCircle size={14} color="#10b981" /> : <Target size={14} color="#f87171" />}
                   </div>
                   <div>
-                    <p style={{ margin: 0, color: "#fff", fontSize: 12, fontWeight: 600 }}>{s.paperLabel || "Practice Paper"}</p>
-                    <p style={{ margin: "2px 0 0", color: "rgba(255,255,255,0.28)", fontSize: 10 }}>{s.date}</p>
+                    <p style={{ margin: 0, color: "#0f172a", fontSize: 12, fontWeight: 600 }}>{s.paperLabel || "Practice Paper"}</p>
+                    <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: 10 }}>{s.date}</p>
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                  <div style={{ width: 52, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: 52, height: 4, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${pct}%`, background: good ? "#10b981" : "#f87171", borderRadius: 3 }} />
                   </div>
                   <div style={{ textAlign: "right", minWidth: 44 }}>
                     <p style={{ margin: 0, color: good ? "#10b981" : "#f87171", fontSize: 13, fontWeight: 700, fontFamily: "'Space Mono',monospace" }}>{s.correct}/{s.total}</p>
-                    <p style={{ margin: 0, color: "rgba(255,255,255,0.28)", fontSize: 10 }}>{pct}%</p>
+                    <p style={{ margin: 0, color: "#64748b", fontSize: 10 }}>{pct}%</p>
                   </div>
                 </div>
               </div>
@@ -832,13 +932,13 @@ function Dashboard({ streak, accuracy, totalPapers, sessions, onStartPaper }) {
 // ─── Stat Card ─────────────────────────────────────────────────────────────────
 function StatCard({ icon, value, label, accent, sublabel }) {
   return (
-    <div className="stat-card-new" style={{ background: "rgba(255,255,255,0.025)", border: `1px solid ${accent}1e` }}>
+    <div className="stat-card-new" style={{ background: "#ffffff", border: `1px solid ${accent}1e` }}>
       <div style={{ position: "absolute", top: -12, right: -12, width: 60, height: 60, borderRadius: "50%", background: `${accent}12`, pointerEvents: "none" }} />
       <div style={{ display: "inline-flex", padding: "7px", borderRadius: 10, background: `${accent}14`, border: `1px solid ${accent}26`, marginBottom: 12 }}>
         {icon}
       </div>
       <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 24, fontWeight: 700, color: accent, letterSpacing: -1, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.48)", marginTop: 4, fontWeight: 500 }}>{label}</div>
+      <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, fontWeight: 500 }}>{label}</div>
       {sublabel && (
         <div style={{ fontSize: 9, color: `${accent}aa`, marginTop: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{sublabel}</div>
       )}
@@ -870,33 +970,33 @@ function StreakCalendar({ sessions, streak }) {
 
   return (
     <div style={{
-      background: "rgba(255,255,255,0.022)",
-      border: "1px solid rgba(255,255,255,0.06)",
+      background: "#ffffff",
+      border: "1px solid #e2e8f0",
       borderRadius: 16,
       padding: "16px 16px 14px",
     }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(165,180,252,0.12)", border: "1px solid rgba(165,180,252,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Flame size={14} color="#a5b4fc" />
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "#f1f5f9", border: "1px solid rgba(37,99,235,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Flame size={14} color="#3b82f6" />
           </div>
           <div>
-            <h4 style={{ margin: 0, color: "#fff", fontSize: 13, fontWeight: 700 }}>Streak Calendar</h4>
-            <p style={{ margin: 0, color: "rgba(255,255,255,0.32)", fontSize: 10 }}>Last 5 weeks</p>
+            <h4 style={{ margin: 0, color: "#0f172a", fontSize: 13, fontWeight: 700 }}>Streak Calendar</h4>
+            <p style={{ margin: 0, color: "#64748b", fontSize: 10 }}>Last 5 weeks</p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 20, padding: "4px 10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, background: "#f1f5f9", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 20, padding: "4px 10px" }}>
           <Flame size={11} color="#f97316" />
           <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, fontWeight: 700, color: "#f97316" }}>{streak}</span>
-          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.32)", fontWeight: 600 }}>day</span>
+          <span style={{ fontSize: 9, color: "#64748b", fontWeight: 600 }}>day</span>
         </div>
       </div>
 
       {/* Day-of-week labels */}
       <div className="sc-grid" style={{ marginBottom: 3 }}>
         {DAY_LABELS.map((d, i) => (
-          <div key={i} style={{ textAlign: "center", fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.2)", letterSpacing: 0.2, paddingBottom: 3 }}>
+          <div key={i} style={{ textAlign: "center", fontSize: 8, fontWeight: 700, color: "rgba(37,99,235,0.1)", letterSpacing: 0.2, paddingBottom: 3 }}>
             {d}
           </div>
         ))}
@@ -906,25 +1006,25 @@ function StreakCalendar({ sessions, streak }) {
       <div className="sc-grid">
         {cells.map((cell, idx) => {
           // Style logic
-          let bg     = "rgba(255,255,255,0.04)";
-          let border = "1px solid rgba(255,255,255,0.06)";
+          let bg     = "#ffffff";
+          let border = "1px solid #e2e8f0";
           let shadow = "none";
           let outline = "none";
 
           if (cell.active) {
-            bg     = "linear-gradient(135deg, #6366f1, #8b5cf6)";
+            bg     = "linear-gradient(135deg, #2563eb, #1d4ed8)";
             border = "1px solid transparent";
-            shadow = "0 0 6px rgba(99,102,241,0.5)";
+            shadow = "0 1px 3px rgba(0,0,0,0.05)";
           }
           if (cell.isToday && !cell.active) {
-            bg     = "rgba(165,180,252,0.08)";
+            bg     = "#e2e8f0";
             border = "1px solid rgba(165,180,252,0.42)";
             outline = "2px solid rgba(165,180,252,0.18)";
           }
           if (cell.isToday && cell.active) {
             // today + solved — brighter ring
-            shadow  = "0 0 8px rgba(99,102,241,0.65)";
-            outline = "2px solid rgba(165,180,252,0.35)";
+            shadow  = "0 0 8px #475569";
+            outline = "2px solid #64748b";
           }
 
           return (
@@ -937,12 +1037,12 @@ function StreakCalendar({ sessions, streak }) {
               {/* Check icon on solved cells */}
               {cell.active && (
                 <svg width="55%" height="55%" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6l3 3 5-5" stroke="rgba(255,255,255,0.85)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M2 6l3 3 5-5" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               )}
               {/* Dot on today (unsolved) */}
               {cell.isToday && !cell.active && (
-                <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#a5b4fc" }} />
+                <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#3b82f6" }} />
               )}
             </div>
           );
@@ -953,16 +1053,16 @@ function StreakCalendar({ sessions, streak }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }} />
-            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 9 }}>Solved</span>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }} />
+            <span style={{ color: "#64748b", fontSize: 9 }}>Solved</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(165,180,252,0.4)" }} />
-            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 9 }}>Today</span>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ffffff", border: "1px solid #64748b" }} />
+            <span style={{ color: "#64748b", fontSize: 9 }}>Today</span>
           </div>
         </div>
-        <span style={{ color: "rgba(255,255,255,0.22)", fontSize: 9 }}>
-          <span style={{ color: "#a5b4fc", fontWeight: 700 }}>{activeDays}</span> active
+        <span style={{ color: "#64748b", fontSize: 9 }}>
+          <span style={{ color: "#3b82f6", fontWeight: 700 }}>{activeDays}</span> active
         </span>
       </div>
     </div>
@@ -983,20 +1083,20 @@ function SubjectProgress({ sessions }) {
   });
 
   const subjects = [
-    { name: "Physics",     color: "#6366f1", icon: "⚛️" },
+    { name: "Physics",     color: "#2563eb", icon: "⚛️" },
     { name: "Chemistry",   color: "#10b981", icon: "🧪" },
     { name: "Mathematics", color: "#f59e0b", icon: "📐" },
   ];
 
   return (
-    <div style={{ background: "rgba(255,255,255,0.022)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: "16px 16px", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: "16px 16px", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: "#f1f5f9", border: "1px solid rgba(37,99,235,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <BarChart2 size={14} color="#818cf8" />
         </div>
         <div>
-          <h4 style={{ margin: 0, color: "#fff", fontSize: 13, fontWeight: 700 }}>Subject Mastery</h4>
-          <p style={{ margin: 0, color: "rgba(255,255,255,0.32)", fontSize: 10 }}>Performance per subject</p>
+          <h4 style={{ margin: 0, color: "#0f172a", fontSize: 13, fontWeight: 700 }}>Subject Mastery</h4>
+          <p style={{ margin: 0, color: "#64748b", fontSize: 10 }}>Performance per subject</p>
         </div>
       </div>
 
@@ -1010,16 +1110,16 @@ function SubjectProgress({ sessions }) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: 13 }}>{icon}</span>
-                  <span style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 600 }}>{name}</span>
+                  <span style={{ color: "#334155", fontSize: 12, fontWeight: 600 }}>{name}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  {hasData && <span style={{ color: "rgba(255,255,255,0.22)", fontSize: 9 }}>{data.correct}/{data.total}</span>}
-                  <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, fontWeight: 700, color: hasData ? color : "rgba(255,255,255,0.16)", minWidth: 34, textAlign: "right" }}>
+                  {hasData && <span style={{ color: "#64748b", fontSize: 9 }}>{data.correct}/{data.total}</span>}
+                  <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 12, fontWeight: 700, color: hasData ? color : "rgba(37,99,235,0.15)", minWidth: 34, textAlign: "right" }}>
                     {hasData ? `${pct}%` : "—"}
                   </span>
                 </div>
               </div>
-              <div style={{ height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ height: 6, background: "#ffffff", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, ${color}bb, ${color})`, borderRadius: 4, boxShadow: hasData ? `0 0 7px ${color}55` : "none", transition: "width 1.1s cubic-bezier(0.4,0,0.2,1)" }} />
               </div>
             </div>
@@ -1028,7 +1128,7 @@ function SubjectProgress({ sessions }) {
       </div>
 
       {!sessions.length && (
-        <p style={{ color: "rgba(255,255,255,0.22)", fontSize: 11, margin: "10px 0 0", textAlign: "center" }}>
+        <p style={{ color: "#64748b", fontSize: 11, margin: "10px 0 0", textAlign: "center" }}>
           Complete papers to see subject breakdown
         </p>
       )}
@@ -1045,14 +1145,14 @@ function PapersPage({ sessions, onStart }) {
 
   return (
     <div>
-      <h2 style={{ margin: "0 0 5px", color: "#fff", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Previous Year Papers</h2>
-      <p style={{ margin: "0 0 20px", color: "rgba(255,255,255,0.38)", fontSize: 13 }}>Practice official TG EMCET papers from past years</p>
+      <h2 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Previous Year Papers</h2>
+      <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>Practice official TG EMCET papers from past years</p>
 
       {/* Filter Pills */}
       <div style={{ display: "flex", gap: 7, marginBottom: 20, flexWrap: "wrap" }}>
         {years.map(y => (
           <button key={y} onClick={() => setFilter(y)}
-            style={{ padding: "6px 14px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.1)", background: filter === y ? "#6366f1" : "transparent", color: filter === y ? "#fff" : "rgba(255,255,255,0.45)", fontSize: 12, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontWeight: 600, transition: "all 0.15s" }}>
+            style={{ padding: "6px 14px", borderRadius: 20, border: "1px solid #f1f5f9", background: filter === y ? "#2563eb" : "transparent", color: filter === y ? "#ffffff" : "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontWeight: 600, transition: "all 0.15s" }}>
             {y}
           </button>
         ))}
@@ -1065,38 +1165,38 @@ function PapersPage({ sessions, onStart }) {
           const best = paperSessions.length ? Math.max(...paperSessions.map(s => Math.round((s.correct / s.total) * 100))) : null;
 
           return (
-            <div key={paper.id} style={{ background: "rgba(255,255,255,0.028)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 20, transition: "all 0.2s" }}>
+            <div key={paper.id} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20, transition: "all 0.2s" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 6, marginBottom: 7, flexWrap: "wrap" }}>
-                    <span style={{ background: "rgba(99,102,241,0.18)", color: "#a5b4fc", fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>{paper.year}</span>
-                    <span style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.38)", fontSize: 9, padding: "2px 8px", borderRadius: 20 }}>{paper.shift}</span>
-                    {done && <span style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>Done</span>}
+                    <span style={{ background: "rgba(99,102,241,0.18)", color: "#3b82f6", fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>{paper.year}</span>
+                    <span style={{ background: "#e2e8f0", color: "#64748b", fontSize: 9, padding: "2px 8px", borderRadius: 20 }}>{paper.shift}</span>
+                    {done && <span style={{ background: "#e2e8f0", color: "#10b981", fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 20 }}>Done</span>}
                   </div>
-                  <h3 style={{ margin: 0, color: "#fff", fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{paper.label}</h3>
+                  <h3 style={{ margin: 0, color: "#0f172a", fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{paper.label}</h3>
                 </div>
                 {best !== null && (
                   <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
                     <div style={{ fontSize: 18, fontWeight: 700, color: best >= 60 ? "#10b981" : "#f87171", fontFamily: "'Space Mono',monospace" }}>{best}%</div>
-                    <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)" }}>Best Score</div>
+                    <div style={{ fontSize: 9, color: "#64748b" }}>Best Score</div>
                   </div>
                 )}
               </div>
 
               <div style={{ display: "flex", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-                <span style={{ color: "rgba(255,255,255,0.38)", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ color: "#64748b", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
                   <FileText size={11} /> {paper.questions} Qs
                 </span>
-                <span style={{ color: "rgba(255,255,255,0.38)", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ color: "#64748b", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
                   <Timer size={11} /> {paper.duration} min
                 </span>
-                <span style={{ color: "rgba(255,255,255,0.38)", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ color: "#64748b", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
                   <BookOpen size={11} /> {paper.subjects.length} subjects
                 </span>
               </div>
 
               <button onClick={() => onStart(paper)}
-                style={{ width: "100%", padding: "10px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", transition: "opacity 0.15s" }}>
+                style={{ width: "100%", padding: "10px", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 10, color: "#ffffff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.15s", boxShadow: "0 4px 12px rgba(37,99,235,0.2)" }}>
                 {done ? "Retake Paper →" : "Start Paper →"}
               </button>
             </div>
@@ -1157,22 +1257,22 @@ function PapersPage({ sessions, onStart }) {
 //   const isLow = timeLeft < 600;
 
 //   return (
-//     <div style={{ minHeight: "100vh", background: "#0a0e1a", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column" }}>
+//     <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column" }}>
 //       <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');* { box-sizing: border-box; }`}</style>
 
 //       {/* Header */}
-//       <div className="exam-header" style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+//       <div className="exam-header" style={{ background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 //         <div>
-//           <h2 style={{ margin: 0, color: "#fff", fontSize: 16, fontWeight: 600 }}>{paper.label}</h2>
-//           <p style={{ margin: 0, color: "rgba(255,255,255,0.4)", fontSize: 12 }}>{answered}/{allQs.length} answered</p>
+//           <h2 style={{ margin: 0, color: "#0f172a", fontSize: 16, fontWeight: 600 }}>{paper.label}</h2>
+//           <p style={{ margin: 0, color: "#64748b", fontSize: 12 }}>{answered}/{allQs.length} answered</p>
 //         </div>
 //         <div className="exam-header-right" style={{ display: "flex", alignItems: "center", gap: 16 }}>
-//           <div style={{ background: isLow ? "rgba(239,68,68,0.15)" : "rgba(99,102,241,0.15)", border: `1px solid ${isLow ? "rgba(239,68,68,0.3)" : "rgba(99,102,241,0.3)"}`, borderRadius: 10, padding: "8px 16px", textAlign: "center" }}>
-//             <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 20, fontWeight: 700, color: isLow ? "#f87171" : "#a5b4fc" }}>
+//           <div style={{ background: isLow ? "#e2e8f0" : "#e2e8f0", border: `1px solid ${isLow ? "#64748b" : "#64748b"}`, borderRadius: 10, padding: "8px 16px", textAlign: "center" }}>
+//             <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 20, fontWeight: 700, color: isLow ? "#f87171" : "#3b82f6" }}>
 //               {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
 //             </div>
 //           </div>
-//           <button onClick={() => setShowConfirm(true)} style={{ padding: "8px 18px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#f87171", fontSize: 13, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontWeight: 500 }}>Submit</button>
+//           <button onClick={() => setShowConfirm(true)} style={{ padding: "8px 18px", background: "#e2e8f0", border: "1px solid #64748b", borderRadius: 8, color: "#f87171", fontSize: 13, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontWeight: 500 }}>Submit</button>
 //         </div>
 //       </div>
 
@@ -1181,15 +1281,15 @@ function PapersPage({ sessions, onStart }) {
 //         <div className="exam-main">
 //           {/* Difficulty + Topic */}
 //           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-//             <span style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc", fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600 }}>{q?.topic}</span>
-//             <span style={{ background: { Easy: "rgba(16,185,129,0.15)", Medium: "rgba(245,158,11,0.15)", Hard: "rgba(239,68,68,0.15)" }[q?.difficulty], color: { Easy: "#10b981", Medium: "#f59e0b", Hard: "#f87171" }[q?.difficulty], fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600 }}>{q?.difficulty}</span>
+//             <span style={{ background: "#e2e8f0", color: "#3b82f6", fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600 }}>{q?.topic}</span>
+//             <span style={{ background: { Easy: "#e2e8f0", Medium: "#e2e8f0", Hard: "#e2e8f0" }[q?.difficulty], color: { Easy: "#10b981", Medium: "#f59e0b", Hard: "#f87171" }[q?.difficulty], fontSize: 11, padding: "3px 10px", borderRadius: 20, fontWeight: 600 }}>{q?.difficulty}</span>
 //             <button onClick={() => setFlagged(f => { const n = new Set(f); n.has(q.id) ? n.delete(q.id) : n.add(q.id); return n; })}
-//               style={{ marginLeft: "auto", background: flagged.has(q?.id) ? "rgba(245,158,11,0.15)" : "transparent", border: `1px solid ${flagged.has(q?.id) ? "rgba(245,158,11,0.4)" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, color: flagged.has(q?.id) ? "#f59e0b" : "rgba(255,255,255,0.4)", fontSize: 12, padding: "4px 12px", cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
+//               style={{ marginLeft: "auto", background: flagged.has(q?.id) ? "#e2e8f0" : "transparent", border: `1px solid ${flagged.has(q?.id) ? "#64748b" : "#f1f5f9"}`, borderRadius: 8, color: flagged.has(q?.id) ? "#f59e0b" : "#64748b", fontSize: 12, padding: "4px 12px", cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
 //               <Flag size={14} /> {flagged.has(q?.id) ? "Flagged" : "Flag"}
 //             </button>
 //           </div>
 
-//           <div style={{ marginBottom: 8, color: "rgba(255,255,255,0.4)", fontSize: 13 }}>Question {current + 1} of {allQs.length}</div>
+//           <div style={{ marginBottom: 8, color: "#64748b", fontSize: 13 }}>Question {current + 1} of {allQs.length}</div>
 //           <p className="question-text">{q?.q}</p>
 
 //           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1197,8 +1297,8 @@ function PapersPage({ sessions, onStart }) {
 //               const selected = answers[q.id] === i;
 //               return (
 //                 <button key={i} className="option-btn" onClick={() => setAnswers(a => ({ ...a, [q.id]: i }))}
-//                   style={{ border: `1px solid ${selected ? "#6366f1" : "rgba(255,255,255,0.08)"}`, background: selected ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.02)", color: selected ? "#a5b4fc" : "rgba(255,255,255,0.75)", fontWeight: selected ? 600 : 400 }}>
-//                   <span style={{ width: 24, height: 24, borderRadius: "50%", border: `2px solid ${selected ? "#6366f1" : "rgba(255,255,255,0.15)"}`, background: selected ? "#6366f1" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, color: selected ? "#fff" : "rgba(255,255,255,0.4)" }}>
+//                   style={{ border: `1px solid ${selected ? "#2563eb" : "#e2e8f0"}`, background: selected ? "#e2e8f0" : "#ffffff", color: selected ? "#3b82f6" : "#334155", fontWeight: selected ? 600 : 400 }}>
+//                   <span style={{ width: 24, height: 24, borderRadius: "50%", border: `2px solid ${selected ? "#2563eb" : "#e2e8f0"}`, background: selected ? "#2563eb" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, color: selected ? "#0f172a" : "#64748b" }}>
 //                     {String.fromCharCode(65 + i)}
 //                   </span>
 //                   {opt}
@@ -1209,21 +1309,21 @@ function PapersPage({ sessions, onStart }) {
 
 //           <div style={{ display: "flex", gap: 12, marginTop: 28 }}>
 //             <button onClick={() => setCurrent(c => Math.max(0, c - 1))} disabled={current === 0}
-//               style={{ padding: "10px 22px", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, background: "transparent", color: "rgba(255,255,255,0.5)", cursor: current === 0 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13 }}>← Prev</button>
+//               style={{ padding: "10px 22px", border: "1px solid #f1f5f9", borderRadius: 10, background: "transparent", color: "#334155", cursor: current === 0 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13 }}>← Prev</button>
 //             <button onClick={() => setCurrent(c => Math.min(allQs.length - 1, c + 1))} disabled={current === allQs.length - 1}
-//               style={{ padding: "10px 22px", border: "none", borderRadius: 10, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", cursor: current === allQs.length - 1 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600 }}>Next →</button>
+//               style={{ padding: "10px 22px", border: "none", borderRadius: 10, background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "#0f172a", cursor: current === allQs.length - 1 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600 }}>Next →</button>
 //           </div>
 //         </div>
 
 //         {/* Question Grid Sidebar */}
 //         <div className="exam-side">
-//           <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>Question Map</p>
+//           <p style={{ color: "#334155", fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 12 }}>Question Map</p>
 //           {['Physics', 'Chemistry', 'Mathematics'].map(subj => {
 //             const subjQs = allQs.map((q, i) => ({ ...q, globalIndex: i })).filter(q => q.subject === subj);
 //             if (subjQs.length === 0) return null;
 //             return (
 //               <div key={subj} style={{ marginBottom: 16 }}>
-//                 <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 8, letterSpacing: 0.5 }}>{subj}</div>
+//                 <div style={{ color: "#334155", fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 8, letterSpacing: 0.5 }}>{subj}</div>
 //                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
 //                   {subjQs.map((q2) => {
 //                     const i = q2.globalIndex;
@@ -1232,7 +1332,7 @@ function PapersPage({ sessions, onStart }) {
 //                     const isFlag = flagged.has(q2.id);
 //                     return (
 //                       <button key={i} onClick={() => setCurrent(i)}
-//                         style={{ padding: "6px 0", borderRadius: 6, border: isCur ? "2px solid #6366f1" : "1px solid transparent", background: isFlag ? "rgba(245,158,11,0.3)" : done ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)", color: isCur ? "#a5b4fc" : done ? "#c4b5fd" : "rgba(255,255,255,0.4)", fontSize: 11, cursor: "pointer", fontFamily: "'Space Mono',monospace", fontWeight: 700, transition: "all 0.15s" }}>
+//                         style={{ padding: "6px 0", borderRadius: 6, border: isCur ? "2px solid #2563eb" : "1px solid transparent", background: isFlag ? "#64748b" : done ? "#64748b" : "#e2e8f0", color: isCur ? "#3b82f6" : done ? "#c4b5fd" : "#64748b", fontSize: 11, cursor: "pointer", fontFamily: "'Space Mono',monospace", fontWeight: 700, transition: "all 0.15s" }}>
 //                         {i + 1}
 //                       </button>
 //                     );
@@ -1242,10 +1342,10 @@ function PapersPage({ sessions, onStart }) {
 //             );
 //           })}
 //           <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 6 }}>
-//             {[["rgba(99,102,241,0.3)", "Answered"], ["rgba(255,255,255,0.06)", "Not Answered"], ["rgba(245,158,11,0.3)", "Flagged"]].map(([bg, label]) => (
+//             {[["#64748b", "Answered"], ["#e2e8f0", "Not Answered"], ["#64748b", "Flagged"]].map(([bg, label]) => (
 //               <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
 //                 <div style={{ width: 12, height: 12, borderRadius: 3, background: bg }} />
-//                 <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>{label}</span>
+//                 <span style={{ color: "#64748b", fontSize: 10 }}>{label}</span>
 //               </div>
 //             ))}
 //           </div>
@@ -1254,14 +1354,14 @@ function PapersPage({ sessions, onStart }) {
 
 //       {showConfirm && (
 //         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-//           <div style={{ background: "#13172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, padding: 32, width: 380, textAlign: "center" }}>
-//             <h3 style={{ color: "#fff", margin: "0 0 8px" }}>Submit Paper?</h3>
-//             <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginBottom: 24 }}>
+//           <div style={{ background: "#13172a", border: "1px solid #f1f5f9", borderRadius: 18, padding: 32, width: 380, textAlign: "center" }}>
+//             <h3 style={{ color: "#0f172a", margin: "0 0 8px" }}>Submit Paper?</h3>
+//             <p style={{ color: "#334155", fontSize: 14, marginBottom: 24 }}>
 //               Answered: {answered}/{allQs.length} • Unattempted: {allQs.length - answered}
 //             </p>
 //             <div style={{ display: "flex", gap: 12 }}>
-//               <button onClick={() => setShowConfirm(false)} style={{ flex: 1, padding: 12, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, background: "transparent", color: "#fff", cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>Go Back</button>
-//               <button onClick={handleSubmit} style={{ flex: 1, padding: 12, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>Submit →</button>
+//               <button onClick={() => setShowConfirm(false)} style={{ flex: 1, padding: 12, border: "1px solid #f1f5f9", borderRadius: 10, background: "transparent", color: "#0f172a", cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>Go Back</button>
+//               <button onClick={handleSubmit} style={{ flex: 1, padding: 12, background: "linear-gradient(135deg,#2563eb,#1d4ed8)", border: "none", borderRadius: 10, color: "#0f172a", fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>Submit →</button>
 //             </div>
 //           </div>
 //         </div>
@@ -1321,29 +1421,29 @@ function ExamPage({ paper, onSubmit, onExit }) {
   const isLow = timeLeft < 600;
   const progress = Math.round((answered / allQs.length) * 100);
 
-  const subjectColors = { Physics: "#6366f1", Chemistry: "#10b981", Mathematics: "#f59e0b", Biology: "#ec4899" };
-  const diffColors = { Easy: { bg: "rgba(16,185,129,0.12)", color: "#10b981" }, Medium: { bg: "rgba(245,158,11,0.12)", color: "#f59e0b" }, Hard: { bg: "rgba(239,68,68,0.12)", color: "#f87171" } };
+  const subjectColors = { Physics: "#2563eb", Chemistry: "#10b981", Mathematics: "#f59e0b", Biology: "#ec4899" };
+  const diffColors = { Easy: { bg: "#f1f5f9", color: "#10b981" }, Medium: { bg: "#f1f5f9", color: "#f59e0b" }, Hard: { bg: "#f1f5f9", color: "#f87171" } };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#080c18", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
         * { box-sizing: border-box; }
 
         .exam-layout { display: flex; flex: 1; overflow: hidden; }
         .exam-main   { flex: 1; padding: 36px 44px; overflow-y: auto; }
-        .exam-side   { width: 272px; background: rgba(255,255,255,0.015); border-left: 1px solid rgba(255,255,255,0.06); padding: 24px 18px; overflow-y: auto; flex-shrink: 0; }
+        .exam-side   { width: 272px; background: #ffffff; border-left: 1px solid #e2e8f0; padding: 24px 18px; overflow-y: auto; flex-shrink: 0; }
 
         .opt-btn {
           display: flex; align-items: flex-start; gap: 14px;
           width: 100%; text-align: left; padding: 16px 20px;
           border-radius: 14px; font-size: 14px; line-height: 1.55;
           cursor: pointer; font-family: 'Sora', sans-serif;
-          transition: all 0.18s ease; border: 1.5px solid rgba(255,255,255,0.07);
-          background: rgba(255,255,255,0.025); color: rgba(255,255,255,0.72);
+          transition: all 0.18s ease; border: 1.5px solid #e2e8f0;
+          background: #ffffff; color: #334155;
         }
-        .opt-btn:hover { border-color: rgba(99,102,241,0.45); background: rgba(99,102,241,0.08); color: #fff; transform: translateX(3px); }
-        .opt-btn.selected { border-color: #6366f1; background: rgba(99,102,241,0.18); color: #c7d2fe; }
+        .opt-btn:hover { border-color: rgba(99,102,241,0.45); background: #e2e8f0; color: #0f172a; transform: translateX(3px); }
+        .opt-btn.selected { border-color: #2563eb; background: rgba(99,102,241,0.18); color: #0f172a; }
 
         .q-nav-btn {
           aspect-ratio: 1; border-radius: 8px; font-size: 11px; font-weight: 700;
@@ -1352,13 +1452,13 @@ function ExamPage({ paper, onSubmit, onExit }) {
         }
         .q-nav-btn:hover { transform: scale(1.08); }
 
-        .exam-progress-bar { height: 3px; background: rgba(255,255,255,0.06); }
-        .exam-progress-fill { height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 99px; transition: width 0.4s ease; }
+        .exam-progress-bar { height: 3px; background: #e2e8f0; }
+        .exam-progress-fill { height: 100%; background: linear-gradient(90deg, #2563eb, #1d4ed8); border-radius: 99px; transition: width 0.4s ease; }
 
         @media (max-width: 900px) {
-          .exam-layout { flex-direction: column; overflow: visible; }
-          .exam-main   { padding: 20px 16px; overflow: visible; }
-          .exam-side   { width: 100%; border-left: none; border-top: 1px solid rgba(255,255,255,0.06); order: 2; }
+          .exam-layout { flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+          .exam-main   { padding: 20px 16px; overflow: visible; flex: none; }
+          .exam-side   { width: 100%; border-left: none; border-top: 1px solid #e2e8f0; order: 2; flex: none; height: auto; }
         }
         @media (max-width: 600px) {
           .exam-main { padding: 16px 12px; }
@@ -1367,15 +1467,15 @@ function ExamPage({ paper, onSubmit, onExit }) {
       `}</style>
 
       {/* ── Top Header ── */}
-      <div style={{ background: "rgba(255,255,255,0.018)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 62, flexShrink: 0 }}>
+      <div style={{ background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 62, flexShrink: 0 }}>
         {/* Left: paper info */}
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <PenTool size={16} color="#fff" />
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#2563eb,#1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <PenTool size={16} color="#ffffff" />
           </div>
           <div>
-            <div style={{ color: "#fff", fontSize: 14, fontWeight: 700, letterSpacing: -0.2 }}>{paper.label}</div>
-            <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, marginTop: 1 }}>
+            <div style={{ color: "#0f172a", fontSize: 14, fontWeight: 700, letterSpacing: -0.2 }}>{paper.label}</div>
+            <div style={{ color: "#64748b", fontSize: 11, marginTop: 1 }}>
               {answered} of {allQs.length} answered
               {flagged.size > 0 && <span style={{ marginLeft: 8, color: "#f59e0b" }}>• {flagged.size} flagged</span>}
             </div>
@@ -1387,18 +1487,18 @@ function ExamPage({ paper, onSubmit, onExit }) {
           {/* Timer */}
           <div style={{
             display: "flex", alignItems: "center", gap: 10, padding: "8px 18px",
-            borderRadius: 12, border: `1.5px solid ${isLow ? "rgba(239,68,68,0.4)" : "rgba(99,102,241,0.3)"}`,
-            background: isLow ? "rgba(239,68,68,0.08)" : "rgba(99,102,241,0.08)",
+            borderRadius: 12, border: `1.5px solid ${isLow ? "#64748b" : "#64748b"}`,
+            background: isLow ? "#e2e8f0" : "#e2e8f0",
           }}>
-            <Timer size={15} color={isLow ? "#f87171" : "#a5b4fc"} />
-            <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 19, fontWeight: 700, color: isLow ? "#f87171" : "#a5b4fc", letterSpacing: 1 }}>
+            <Timer size={15} color={isLow ? "#f87171" : "#3b82f6"} />
+            <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 19, fontWeight: 700, color: isLow ? "#f87171" : "#3b82f6", letterSpacing: 1 }}>
               {String(mins).padStart(2,"0")}:{String(secs).padStart(2,"0")}
             </span>
           </div>
           <button onClick={() => setShowConfirm(true)} style={{
-            padding: "9px 20px", background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-            border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 600,
-            cursor: "pointer", fontFamily: "'Sora',sans-serif", letterSpacing: 0.2,
+            padding: "9px 20px", background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
+            border: "none", borderRadius: 10, color: "#ffffff", fontSize: 13, fontWeight: 600,
+            cursor: "pointer", fontFamily: "'Sora',sans-serif", letterSpacing: 0.2, boxShadow: "0 4px 12px rgba(37,99,235,0.2)"
           }}>Submit Paper</button>
         </div>
       </div>
@@ -1413,11 +1513,11 @@ function ExamPage({ paper, onSubmit, onExit }) {
         <div className="exam-main">
           {/* Breadcrumb badges */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 22, flexWrap: "wrap" }}>
-            <span style={{ background: `${subjectColors[q?.subject] || "#6366f1"}18`, color: subjectColors[q?.subject] || "#a5b4fc", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20, border: `1px solid ${subjectColors[q?.subject] || "#6366f1"}33`, letterSpacing: 0.3 }}>
+            <span style={{ background: `${subjectColors[q?.subject] || "#2563eb"}18`, color: subjectColors[q?.subject] || "#3b82f6", fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20, border: `1px solid ${subjectColors[q?.subject] || "#2563eb"}33`, letterSpacing: 0.3 }}>
               {q?.subject}
             </span>
             {q?.topic && (
-              <span style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)", fontSize: 11, padding: "4px 12px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)" }}>
+              <span style={{ background: "#ffffff", color: "#334155", fontSize: 11, padding: "4px 12px", borderRadius: 20, border: "1px solid #e2e8f0" }}>
                 {q.topic}
               </span>
             )}
@@ -1427,16 +1527,16 @@ function ExamPage({ paper, onSubmit, onExit }) {
               </span>
             )}
             <button onClick={() => setFlagged(f => { const n = new Set(f); n.has(q.id) ? n.delete(q.id) : n.add(q.id); return n; })}
-              style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, background: flagged.has(q?.id) ? "rgba(245,158,11,0.12)" : "transparent", border: `1.5px solid ${flagged.has(q?.id) ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.1)"}`, borderRadius: 8, color: flagged.has(q?.id) ? "#f59e0b" : "rgba(255,255,255,0.35)", fontSize: 12, fontWeight: 600, padding: "5px 13px", cursor: "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.15s" }}>
+              style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, background: flagged.has(q?.id) ? "#f1f5f9" : "transparent", border: `1.5px solid ${flagged.has(q?.id) ? "rgba(245,158,11,0.5)" : "#f1f5f9"}`, borderRadius: 8, color: flagged.has(q?.id) ? "#f59e0b" : "#64748b", fontSize: 12, fontWeight: 600, padding: "5px 13px", cursor: "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.15s" }}>
               <Flag size={13} /> {flagged.has(q?.id) ? "Flagged" : "Flag"}
             </button>
           </div>
 
           {/* Question number + text */}
-          <div style={{ marginBottom: 6, color: "rgba(255,255,255,0.3)", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
+          <div style={{ marginBottom: 6, color: "#64748b", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>
             Question {current + 1} / {allQs.length}
           </div>
-          <p style={{ color: "#f1f5f9", fontSize: 17, lineHeight: 1.75, fontWeight: 500, marginBottom: 30, marginTop: 0 }}>
+          <p style={{ color: "#0f172a", fontSize: 17, lineHeight: 1.75, fontWeight: 500, marginBottom: 30, marginTop: 0 }}>
             {q?.q}
           </p>
 
@@ -1450,9 +1550,9 @@ function ExamPage({ paper, onSubmit, onExit }) {
                     minWidth: 28, height: 28, borderRadius: "50%", flexShrink: 0, marginTop: 1,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 12, fontWeight: 700,
-                    background: selected ? "#6366f1" : "rgba(255,255,255,0.06)",
-                    border: selected ? "none" : "1.5px solid rgba(255,255,255,0.12)",
-                    color: selected ? "#fff" : "rgba(255,255,255,0.45)",
+                    background: selected ? "#2563eb" : "#e2e8f0",
+                    border: selected ? "none" : "1.5px solid #f1f5f9",
+                    color: selected ? "#ffffff" : "#64748b",
                     transition: "all 0.18s",
                   }}>
                     {String.fromCharCode(65 + i)}
@@ -1467,14 +1567,14 @@ function ExamPage({ paper, onSubmit, onExit }) {
           {/* Navigation */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button onClick={() => setCurrent(c => Math.max(0, c - 1))} disabled={current === 0}
-              style={{ padding: "10px 22px", border: "1.5px solid rgba(255,255,255,0.1)", borderRadius: 10, background: "transparent", color: current === 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.6)", cursor: current === 0 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 500, transition: "all 0.15s" }}>
+              style={{ padding: "10px 22px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "transparent", color: current === 0 ? "#cbd5e1" : "#0f172a", cursor: current === 0 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, transition: "all 0.15s" }}>
               ← Prev
             </button>
 
             {/* Clear answer */}
             {answers[q?.id] !== undefined && (
               <button onClick={() => setAnswers(a => { const n = { ...a }; delete n[q.id]; return n; })}
-                style={{ padding: "10px 18px", border: "1.5px solid rgba(239,68,68,0.25)", borderRadius: 10, background: "rgba(239,68,68,0.07)", color: "#f87171", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                style={{ padding: "10px 18px", border: "1.5px solid rgba(239,68,68,0.25)", borderRadius: 10, background: "#e2e8f0", color: "#f87171", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
                 <X size={13} /> Clear
               </button>
             )}
@@ -1483,12 +1583,12 @@ function ExamPage({ paper, onSubmit, onExit }) {
 
             {/* Skip */}
             <button onClick={() => setCurrent(c => Math.min(allQs.length - 1, c + 1))} disabled={current === allQs.length - 1}
-              style={{ padding: "10px 18px", border: "1.5px solid rgba(255,255,255,0.08)", borderRadius: 10, background: "transparent", color: "rgba(255,255,255,0.4)", cursor: current === allQs.length - 1 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+              style={{ padding: "10px 18px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "transparent", color: "#64748b", cursor: current === allQs.length - 1 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
               Skip <SkipForward size={13} />
             </button>
 
             <button onClick={() => setCurrent(c => Math.min(allQs.length - 1, c + 1))} disabled={current === allQs.length - 1}
-              style={{ padding: "10px 26px", border: "none", borderRadius: 10, background: current === allQs.length - 1 ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "#fff", cursor: current === allQs.length - 1 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, transition: "all 0.15s" }}>
+              style={{ padding: "10px 26px", border: "none", borderRadius: 10, background: current === allQs.length - 1 ? "#64748b" : "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "#ffffff", cursor: current === allQs.length - 1 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, transition: "all 0.15s", boxShadow: current === allQs.length - 1 ? "none" : "0 4px 12px rgba(37,99,235,0.2)" }}>
               Next →
             </button>
           </div>
@@ -1500,29 +1600,29 @@ function ExamPage({ paper, onSubmit, onExit }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 20 }}>
             {[
               { label: "Done", value: answered, color: "#818cf8" },
-              { label: "Left", value: allQs.length - answered, color: "rgba(255,255,255,0.3)" },
+              { label: "Left", value: allQs.length - answered, color: "#64748b" },
               { label: "Flagged", value: flagged.size, color: "#f59e0b" },
             ].map(({ label, value, color }) => (
-              <div key={label} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+              <div key={label} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
                 <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 18, fontWeight: 700, color }}>{value}</div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{label}</div>
+                <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>{label}</div>
               </div>
             ))}
           </div>
 
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>Question Map</p>
+          <p style={{ color: "#64748b", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>Question Map</p>
 
           {['Physics', 'Chemistry', 'Mathematics', 'Biology'].map(subj => {
             const subjQs = allQs.map((q2, i) => ({ ...q2, globalIndex: i })).filter(q2 => q2.subject === subj);
             if (subjQs.length === 0) return null;
-            const subjColor = subjectColors[subj] || "#6366f1";
+            const subjColor = subjectColors[subj] || "#2563eb";
             return (
               <div key={subj} style={{ marginBottom: 18 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: subjColor, flexShrink: 0 }} />
                   <span style={{ color: subjColor, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{subj}</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(32px, 1fr))", gap: 6 }}>
                   {subjQs.map((q2) => {
                     const i = q2.globalIndex;
                     const done = answers[q2.id] !== undefined;
@@ -1531,9 +1631,9 @@ function ExamPage({ paper, onSubmit, onExit }) {
                     return (
                       <button key={i} onClick={() => setCurrent(i)} className="q-nav-btn"
                         style={{
-                          background: isCur ? subjColor : isFlag ? "rgba(245,158,11,0.25)" : done ? `${subjColor}28` : "rgba(255,255,255,0.05)",
-                          border: isCur ? `2px solid ${subjColor}` : isFlag ? "1.5px solid rgba(245,158,11,0.4)" : done ? `1.5px solid ${subjColor}44` : "1.5px solid rgba(255,255,255,0.07)",
-                          color: isCur ? "#fff" : isFlag ? "#f59e0b" : done ? subjColor : "rgba(255,255,255,0.3)",
+                          background: isCur ? subjColor : isFlag ? "rgba(245,158,11,0.25)" : done ? `${subjColor}28` : "#ffffff",
+                          border: isCur ? `2px solid ${subjColor}` : isFlag ? "1.5px solid #64748b" : done ? `1.5px solid ${subjColor}44` : "1.5px solid #e2e8f0",
+                          color: isCur ? "#ffffff" : isFlag ? "#f59e0b" : done ? subjColor : "#64748b",
                           padding: "7px 0",
                         }}>
                         {i + 1}
@@ -1546,16 +1646,16 @@ function ExamPage({ paper, onSubmit, onExit }) {
           })}
 
           {/* Legend */}
-          <div style={{ marginTop: 20, padding: "14px 12px", background: "rgba(255,255,255,0.02)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.05)" }}>
+          <div style={{ marginTop: 20, padding: "14px 12px", background: "#ffffff", borderRadius: 10, border: "1px solid #ffffff" }}>
             {[
-              { bg: "#6366f1", label: "Current" },
+              { bg: "#2563eb", label: "Current" },
               { bg: "rgba(99,102,241,0.28)", label: "Answered" },
               { bg: "rgba(245,158,11,0.25)", label: "Flagged" },
-              { bg: "rgba(255,255,255,0.05)", label: "Unattempted" },
+              { bg: "#ffffff", label: "Unattempted" },
             ].map(({ bg, label }) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
                 <div style={{ width: 12, height: 12, borderRadius: 4, background: bg, flexShrink: 0 }} />
-                <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 10 }}>{label}</span>
+                <span style={{ color: "#64748b", fontSize: 10 }}>{label}</span>
               </div>
             ))}
           </div>
@@ -1564,23 +1664,25 @@ function ExamPage({ paper, onSubmit, onExit }) {
 
       {/* ── Submit Confirm Modal ── */}
       {showConfirm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div style={{ background: "#0f1424", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 20, padding: "36px 32px", width: 400, textAlign: "center", boxShadow: "0 40px 80px rgba(0,0,0,0.5)" }}>
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-              <Zap size={24} color="#818cf8" />
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "36px 32px", width: 400, textAlign: "center", boxShadow: "0 40px 80px rgba(0,0,0,0.15)" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: "#f8faff", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <Zap size={24} color="#3b82f6" />
             </div>
-            <h3 style={{ color: "#fff", margin: "0 0 8px", fontSize: 20, fontWeight: 700 }}>Submit Paper?</h3>
-            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
-              You've answered <span style={{ color: "#a5b4fc", fontWeight: 700 }}>{answered}</span> of <span style={{ color: "#fff", fontWeight: 700 }}>{allQs.length}</span> questions.
+            <h3 style={{ color: "#0f172a", margin: "0 0 8px", fontSize: 20, fontWeight: 700 }}>Submit Paper?</h3>
+            <p style={{ color: "#64748b", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
+              You've answered <span style={{ color: "#3b82f6", fontWeight: 700 }}>{answered}</span> of <span style={{ color: "#0f172a", fontWeight: 700 }}>{allQs.length}</span> questions.
               {allQs.length - answered > 0 && <> <span style={{ color: "#f87171", fontWeight: 700 }}>{allQs.length - answered}</span> left unattempted.</>}
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowConfirm(false)}
-                style={{ flex: 1, padding: "12px 0", border: "1.5px solid rgba(255,255,255,0.1)", borderRadius: 12, background: "transparent", color: "rgba(255,255,255,0.65)", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 14, fontWeight: 500 }}>
+                style={{ flex: 1, padding: "12px 0", border: "1.5px solid #e2e8f0", borderRadius: 12, background: "#ffffff", color: "#475569", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 14, fontWeight: 600, transition: "background 0.15s" }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f8faff"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#ffffff"}>
                 Keep Going
               </button>
               <button onClick={handleSubmit}
-                style={{ flex: 1, padding: "12px 0", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", border: "none", borderRadius: 12, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 14 }}>
+                style={{ flex: 1, padding: "12px 0", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", border: "none", borderRadius: 12, color: "#ffffff", fontWeight: 700, cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 14, boxShadow: "0 8px 16px rgba(37,99,235,0.3)" }}>
                 Submit Now →
               </button>
             </div>
@@ -1600,28 +1702,28 @@ function ExamPage({ paper, onSubmit, onExit }) {
 //   const [tab, setTab] = useState("overview");
 
 //   return (
-//     <div style={{ minHeight: "100vh", background: "#0a0e1a", fontFamily: "'Sora',sans-serif", padding: "32px 40px" }}>
+//     <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", padding: "32px 40px" }}>
 //       <style>{`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');* { box-sizing: border-box; }`}</style>
 
-//       <button onClick={onBack} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "rgba(255,255,255,0.5)", padding: "8px 16px", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, marginBottom: 24 }}>← Back to Dashboard</button>
+//       <button onClick={onBack} style={{ background: "transparent", border: "1px solid #f1f5f9", borderRadius: 8, color: "#334155", padding: "8px 16px", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, marginBottom: 24 }}>← Back to Dashboard</button>
 
 //       <div className="analysis-top" style={{ display: "flex", gap: 32, marginBottom: 32 }}>
 //         <div>
-//           <h1 style={{ margin: "0 0 6px", color: "#fff", fontSize: 26, fontWeight: 700 }}>Paper Analysis</h1>
-//           <p style={{ margin: 0, color: "rgba(255,255,255,0.4)", fontSize: 14 }}>{paperLabel}</p>
+//           <h1 style={{ margin: "0 0 6px", color: "#0f172a", fontSize: 26, fontWeight: 700 }}>Paper Analysis</h1>
+//           <p style={{ margin: 0, color: "#64748b", fontSize: 14 }}>{paperLabel}</p>
 //         </div>
 //         {/* Score Ring */}
 //         <div style={{ flexShrink: 0, position: "relative", width: 120, height: 120 }}>
 //           <svg viewBox="0 0 120 120" width={120} height={120}>
-//             <circle cx={60} cy={60} r={52} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={10} />
+//             <circle cx={60} cy={60} r={52} fill="none" stroke="#e2e8f0" strokeWidth={10} />
 //             <circle cx={60} cy={60} r={52} fill="none" stroke={pct >= 60 ? "#10b981" : pct >= 40 ? "#f59e0b" : "#f87171"} strokeWidth={10}
 //               strokeDasharray={`${2 * Math.PI * 52}`}
 //               strokeDashoffset={`${2 * Math.PI * 52 * (1 - pct / 100)}`}
 //               strokeLinecap="round" transform="rotate(-90 60 60)" />
 //           </svg>
 //           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-//             <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 24, fontWeight: 700, color: "#fff" }}>{pct}%</div>
-//             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>Score</div>
+//             <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 24, fontWeight: 700, color: "#0f172a" }}>{pct}%</div>
+//             <div style={{ fontSize: 10, color: "#64748b" }}>Score</div>
 //           </div>
 //         </div>
 //       </div>
@@ -1632,20 +1734,20 @@ function ExamPage({ paper, onSubmit, onExit }) {
 //           { v: correct, l: "Correct", c: "#10b981" },
 //           { v: wrong, l: "Wrong", c: "#f87171" },
 //           { v: skipped, l: "Skipped", c: "#f59e0b" },
-//           { v: `${Math.floor(timeTaken / 60)}m`, l: "Time Taken", c: "#6366f1" },
+//           { v: `${Math.floor(timeTaken / 60)}m`, l: "Time Taken", c: "#2563eb" },
 //         ].map(({ v, l, c }) => (
-//           <div key={l} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${c}22`, borderRadius: 12, padding: "16px 18px" }}>
+//           <div key={l} style={{ background: "#ffffff", border: `1px solid ${c}22`, borderRadius: 12, padding: "16px 18px" }}>
 //             <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 26, fontWeight: 700, color: c }}>{v}</div>
-//             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 3 }}>{l}</div>
+//             <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{l}</div>
 //           </div>
 //         ))}
 //       </div>
 
 //       {/* Tabs */}
-//       <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 4, width: "fit-content" }}>
+//       <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "#ffffff", borderRadius: 10, padding: 4, width: "fit-content" }}>
 //         {["overview", "questions", "topics"].map(t => (
 //           <button key={t} onClick={() => setTab(t)}
-//             style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, background: tab === t ? "#6366f1" : "transparent", color: tab === t ? "#fff" : "rgba(255,255,255,0.5)", textTransform: "capitalize" }}>
+//             style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, background: tab === t ? "#2563eb" : "transparent", color: tab === t ? "#0f172a" : "#334155", textTransform: "capitalize" }}>
 //             {t}
 //           </button>
 //         ))}
@@ -1653,21 +1755,21 @@ function ExamPage({ paper, onSubmit, onExit }) {
 
 //       {tab === "overview" && (
 //         <div>
-//           <h3 style={{ color: "#fff", fontSize: 16, marginBottom: 16 }}>Subject-wise Breakdown</h3>
+//           <h3 style={{ color: "#0f172a", fontSize: 16, marginBottom: 16 }}>Subject-wise Breakdown</h3>
 //           {Object.entries(subjectBreakdown || {}).map(([subj, d]) => {
 //             const p = Math.round((d.correct / d.total) * 100);
 //             return (
-//               <div key={subj} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: 18, marginBottom: 12 }}>
+//               <div key={subj} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 18, marginBottom: 12 }}>
 //                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-//                   <span style={{ color: "#fff", fontWeight: 600 }}>{subj}</span>
+//                   <span style={{ color: "#0f172a", fontWeight: 600 }}>{subj}</span>
 //                   <span style={{ color: p >= 60 ? "#10b981" : "#f87171", fontWeight: 700, fontFamily: "'Space Mono',monospace" }}>{p}%</span>
 //                 </div>
 //                 <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
 //                   {[["<Check size={14} />", d.correct, "#10b981"], ["<X size={14} />", d.wrong, "#f87171"], ["<SkipForward size={14} />", d.skipped, "#f59e0b"]].map(([ic, val, c]) => (
-//                     <span key={ic} style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{ic} <span style={{ color: c, fontWeight: 700 }}>{val}</span></span>
+//                     <span key={ic} style={{ color: "#334155", fontSize: 12 }}>{ic} <span style={{ color: c, fontWeight: 700 }}>{val}</span></span>
 //                   ))}
 //                 </div>
-//                 <div style={{ height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3 }}>
+//                 <div style={{ height: 6, background: "#e2e8f0", borderRadius: 3 }}>
 //                   <div style={{ height: "100%", width: `${p}%`, background: p >= 60 ? "#10b981" : "#f87171", borderRadius: 3 }} />
 //                 </div>
 //               </div>
@@ -1679,14 +1781,14 @@ function ExamPage({ paper, onSubmit, onExit }) {
 //       {tab === "questions" && (
 //         <div>
 //           {(questionResults || []).map((q, i) => (
-//             <div key={i} style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${q.isCorrect ? "rgba(16,185,129,0.2)" : q.userAnswer === undefined ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.2)"}`, borderRadius: 12, padding: 16, marginBottom: 10 }}>
+//             <div key={i} style={{ background: "#ffffff", border: `1px solid ${q.isCorrect ? "rgba(37,99,235,0.1)" : q.userAnswer === undefined ? "rgba(37,99,235,0.1)" : "rgba(37,99,235,0.1)"}`, borderRadius: 12, padding: 16, marginBottom: 10 }}>
 //               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-//                 <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Q{i + 1} • {q.topic}</span>
+//                 <span style={{ color: "#475569", fontSize: 12 }}>Q{i + 1} • {q.topic}</span>
 //                 <span style={{ fontSize: 12, fontWeight: 700, color: q.isCorrect ? "#10b981" : q.userAnswer === undefined ? "#f59e0b" : "#f87171" }}>
 //                   {q.isCorrect ? "✓ Correct" : q.userAnswer === undefined ? "Skipped" : "✗ Wrong"}
 //                 </span>
 //               </div>
-//               <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, margin: "0 0 8px" }}>{q.q}</p>
+//               <p style={{ color: "#0f172a", fontSize: 13, margin: "0 0 8px" }}>{q.q}</p>
 //               <div style={{ display: "flex", gap: 12 }}>
 //                 <span style={{ color: "#10b981", fontSize: 12 }}>✓ Correct: {q.options[q.ans]}</span>
 //                 {!q.isCorrect && q.userAnswer !== undefined && (
@@ -1710,16 +1812,16 @@ function ExamPage({ paper, onSubmit, onExit }) {
 //             return Object.entries(topicMap).sort((a, b) => (b[1].correct / b[1].total) - (a[1].correct / a[1].total)).map(([topic, d]) => {
 //               const p = Math.round((d.correct / d.total) * 100);
 //               return (
-//                 <div key={topic} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 10, marginBottom: 8 }}>
+//                 <div key={topic} style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", background: "#ffffff", borderRadius: 10, marginBottom: 8 }}>
 //                   <div style={{ flex: 1 }}>
-//                     <div style={{ color: "#fff", fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{topic}</div>
-//                     <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
+//                     <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 500, marginBottom: 4 }}>{topic}</div>
+//                     <div style={{ height: 4, background: "#e2e8f0", borderRadius: 2 }}>
 //                       <div style={{ height: "100%", width: `${p}%`, background: p >= 60 ? "#10b981" : p >= 40 ? "#f59e0b" : "#f87171", borderRadius: 2 }} />
 //                     </div>
 //                   </div>
 //                   <div style={{ textAlign: "right", flexShrink: 0 }}>
 //                     <div style={{ color: p >= 60 ? "#10b981" : "#f87171", fontWeight: 700, fontFamily: "'Space Mono',monospace", fontSize: 15 }}>{p}%</div>
-//                     <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 10 }}>{d.correct}/{d.total}</div>
+//                     <div style={{ color: "#64748b", fontSize: 10 }}>{d.correct}/{d.total}</div>
 //                   </div>
 //                 </div>
 //               );
@@ -1743,7 +1845,7 @@ function AnalysisPage({ data, onBack }) {
 
   const scoreColor = pct >= 70 ? "#10b981" : pct >= 45 ? "#f59e0b" : "#f87171";
   const scoreLabel = pct >= 70 ? "Great Work!" : pct >= 45 ? "Good Effort" : "Keep Practicing";
-  const subjectColors = { Physics: "#6366f1", Chemistry: "#10b981", Mathematics: "#f59e0b", Biology: "#ec4899" };
+  const subjectColors = { Physics: "#2563eb", Chemistry: "#10b981", Mathematics: "#f59e0b", Biology: "#ec4899" };
 
   const circumference = 2 * Math.PI * 54;
 
@@ -1763,7 +1865,7 @@ function AnalysisPage({ data, onBack }) {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "#080c18", fontFamily: "'Sora',sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
         * { box-sizing: border-box; }
@@ -1776,16 +1878,16 @@ function AnalysisPage({ data, onBack }) {
 
         .an-stat-card {
           border-radius: 14px; padding: 18px 20px;
-          border: 1px solid rgba(255,255,255,0.06);
-          background: rgba(255,255,255,0.025);
+          border: 1px solid #e2e8f0;
+          background: #ffffff;
           transition: transform 0.18s, border-color 0.18s;
         }
-        .an-stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.12); }
+        .an-stat-card:hover { transform: translateY(-2px); border-color: #f1f5f9; }
 
         .an-subj-card {
           border-radius: 16px; padding: 20px 22px;
-          background: rgba(255,255,255,0.025);
-          border: 1px solid rgba(255,255,255,0.06);
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
           transition: transform 0.18s;
         }
         .an-subj-card:hover { transform: translateY(-2px); }
@@ -1793,10 +1895,10 @@ function AnalysisPage({ data, onBack }) {
         .an-q-row {
           border-radius: 12px; padding: 16px 18px; margin-bottom: 8px;
           cursor: pointer; transition: all 0.18s;
-          border: 1px solid rgba(255,255,255,0.05);
-          background: rgba(255,255,255,0.02);
+          border: 1px solid #ffffff;
+          background: #ffffff;
         }
-        .an-q-row:hover { background: rgba(255,255,255,0.04); }
+        .an-q-row:hover { background: #ffffff; }
 
         .an-tab-pill {
           display: flex; align-items: center; gap: 6px;
@@ -1836,13 +1938,13 @@ function AnalysisPage({ data, onBack }) {
         {/* ── Back Button ── */}
         <button onClick={onBack} style={{
           display: "inline-flex", alignItems: "center", gap: 7,
-          background: "transparent", border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 9, color: "rgba(255,255,255,0.5)", padding: "8px 16px",
+          background: "transparent", border: "1px solid #f1f5f9",
+          borderRadius: 9, color: "#334155", padding: "8px 16px",
           cursor: "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13,
           marginBottom: 28, transition: "all 0.15s",
         }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "#fff"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "rgba(255,255,255,0.5)"; }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#64748b"; e.currentTarget.style.color = "#0f172a"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "#f1f5f9"; e.currentTarget.style.color = "#334155"; }}
         >
           ← Back to Dashboard
         </button>
@@ -1856,21 +1958,21 @@ function AnalysisPage({ data, onBack }) {
               </div>
               <span style={{ fontSize: 12, fontWeight: 700, color: scoreColor, textTransform: "uppercase", letterSpacing: 1 }}>{scoreLabel}</span>
             </div>
-            <h1 style={{ margin: "0 0 6px", color: "#fff", fontSize: 28, fontWeight: 700, letterSpacing: -0.5, lineHeight: 1.2 }}>
+            <h1 style={{ margin: "0 0 6px", color: "#0f172a", fontSize: 28, fontWeight: 700, letterSpacing: -0.5, lineHeight: 1.2 }}>
               Paper Analysis
             </h1>
-            <p style={{ margin: "0 0 14px", color: "rgba(255,255,255,0.4)", fontSize: 14 }}>{paperLabel}</p>
+            <p style={{ margin: "0 0 14px", color: "#64748b", fontSize: 14 }}>{paperLabel}</p>
 
             {/* Quick pill summary */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <span style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981", fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 20 }}>
+              <span style={{ background: "#f1f5f9", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981", fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 20 }}>
                 ✓ {correct} correct
               </span>
-              <span style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171", fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 20 }}>
+              <span style={{ background: "#f1f5f9", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171", fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 20 }}>
                 ✗ {wrong} wrong
               </span>
               {skipped > 0 && (
-                <span style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b", fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 20 }}>
+                <span style={{ background: "#f1f5f9", border: "1px solid rgba(245,158,11,0.25)", color: "#f59e0b", fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 20 }}>
                   ⊘ {skipped} skipped
                 </span>
               )}
@@ -1881,7 +1983,7 @@ function AnalysisPage({ data, onBack }) {
           <div className="an-ring" style={{ position: "relative", width: 148, height: 148, flexShrink: 0 }}>
             <svg viewBox="0 0 148 148" width={148} height={148} style={{ transform: "rotate(-90deg)" }}>
               {/* Track */}
-              <circle cx={74} cy={74} r={54} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={12} />
+              <circle cx={74} cy={74} r={54} fill="none" stroke="#ffffff" strokeWidth={12} />
               {/* Fill */}
               <circle cx={74} cy={74} r={54} fill="none"
                 stroke={scoreColor} strokeWidth={12}
@@ -1893,8 +1995,8 @@ function AnalysisPage({ data, onBack }) {
               />
             </svg>
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 30, fontWeight: 700, color: "#fff", lineHeight: 1 }}>{pct}%</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4, fontWeight: 600 }}>{correct}/{total}</div>
+              <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 30, fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>{pct}%</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, fontWeight: 600 }}>{correct}/{total}</div>
             </div>
           </div>
         </div>
@@ -1902,17 +2004,17 @@ function AnalysisPage({ data, onBack }) {
         {/* ── Stat Cards ── */}
         <div className="an-stats">
           {[
-            { v: correct, l: "Correct",    c: "#10b981", icon: <CheckCircle size={18} color="#10b981" />, bg: "rgba(16,185,129,0.08)"  },
-            { v: wrong,   l: "Wrong",      c: "#f87171", icon: <X           size={18} color="#f87171" />, bg: "rgba(239,68,68,0.08)"   },
-            { v: skipped, l: "Skipped",    c: "#f59e0b", icon: <SkipForward size={18} color="#f59e0b" />, bg: "rgba(245,158,11,0.08)"  },
-            { v: `${Math.floor(timeTaken / 60)}m ${timeTaken % 60}s`, l: "Time Taken", c: "#6366f1", icon: <Timer size={18} color="#6366f1" />, bg: "rgba(99,102,241,0.08)" },
+            { v: correct, l: "Correct",    c: "#10b981", icon: <CheckCircle size={18} color="#10b981" />, bg: "#e2e8f0"  },
+            { v: wrong,   l: "Wrong",      c: "#f87171", icon: <X           size={18} color="#f87171" />, bg: "#e2e8f0"   },
+            { v: skipped, l: "Skipped",    c: "#f59e0b", icon: <SkipForward size={18} color="#f59e0b" />, bg: "#e2e8f0"  },
+            { v: `${Math.floor(timeTaken / 60)}m ${timeTaken % 60}s`, l: "Time Taken", c: "#2563eb", icon: <Timer size={18} color="#2563eb" />, bg: "#e2e8f0" },
           ].map(({ v, l, c, icon, bg }, idx) => (
             <div key={l} className={`an-stat-card an-fade an-fade-${idx + 1}`} style={{ borderColor: `${c}22` }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div style={{ width: 34, height: 34, borderRadius: 10, background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {icon}
                 </div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>{l}</div>
+                <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8 }}>{l}</div>
               </div>
               <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 26, fontWeight: 700, color: c, letterSpacing: -1 }}>{v}</div>
             </div>
@@ -1920,10 +2022,10 @@ function AnalysisPage({ data, onBack }) {
         </div>
 
         {/* ── Tabs ── */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: 4, width: "fit-content" }}>
+        <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "#ffffff", borderRadius: 12, padding: 4, width: "fit-content" }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} className="an-tab-pill"
-              style={{ background: tab === t.id ? "#6366f1" : "transparent", color: tab === t.id ? "#fff" : "rgba(255,255,255,0.45)" }}>
+              style={{ background: tab === t.id ? "#2563eb" : "transparent", color: tab === t.id ? "#ffffff" : "#64748b" }}>
               {t.icon} {t.label}
             </button>
           ))}
@@ -1932,17 +2034,17 @@ function AnalysisPage({ data, onBack }) {
         {/* ── Overview Tab ── */}
         {tab === "overview" && (
           <div>
-            <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>Subject Breakdown</div>
+            <div style={{ color: "#64748b", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>Subject Breakdown</div>
             <div className="an-subj-grid">
               {Object.entries(subjectBreakdown || {}).map(([subj, d]) => {
                 const p = Math.round((d.correct / d.total) * 100);
-                const sc = subjectColors[subj] || "#6366f1";
+                const sc = subjectColors[subj] || "#2563eb";
                 return (
                   <div key={subj} className="an-subj-card" style={{ borderColor: `${sc}22` }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                         <div style={{ width: 10, height: 10, borderRadius: "50%", background: sc, boxShadow: `0 0 8px ${sc}88` }} />
-                        <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{subj}</span>
+                        <span style={{ color: "#0f172a", fontWeight: 700, fontSize: 15 }}>{subj}</span>
                       </div>
                       <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 22, fontWeight: 700, color: p >= 60 ? "#10b981" : p >= 40 ? "#f59e0b" : "#f87171" }}>{p}%</span>
                     </div>
@@ -1956,7 +2058,7 @@ function AnalysisPage({ data, onBack }) {
                       ].map(({ label, val, c }) => (
                         <div key={label} style={{ flex: 1, background: `${c}0f`, border: `1px solid ${c}22`, borderRadius: 8, padding: "7px 0", textAlign: "center" }}>
                           <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 16, fontWeight: 700, color: c }}>{val}</div>
-                          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+                          <div style={{ fontSize: 9, color: "#64748b", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
                         </div>
                       ))}
                     </div>
@@ -1968,8 +2070,8 @@ function AnalysisPage({ data, onBack }) {
                       <div style={{ width: `${(d.skipped / d.total) * 100}%`, background: "#f59e0b", borderRadius: "0 6px 6px 0" }} />
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-                      <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 10 }}>{d.total} questions</span>
-                      <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 10 }}>{d.correct}/{d.total} correct</span>
+                      <span style={{ color: "#64748b", fontSize: 10 }}>{d.total} questions</span>
+                      <span style={{ color: "#64748b", fontSize: 10 }}>{d.correct}/{d.total} correct</span>
                     </div>
                   </div>
                 );
@@ -1981,18 +2083,18 @@ function AnalysisPage({ data, onBack }) {
         {/* ── Questions Tab ── */}
         {tab === "questions" && (
           <div>
-            <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+            <div style={{ color: "#64748b", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
               All {total} Questions
             </div>
             {(questionResults || []).map((q, i) => {
               const isOpen = expandedQ === i;
               const statusColor = q.isCorrect ? "#10b981" : q.userAnswer === undefined ? "#f59e0b" : "#f87171";
               const statusLabel = q.isCorrect ? "Correct" : q.userAnswer === undefined ? "Skipped" : "Wrong";
-              const statusBg = q.isCorrect ? "rgba(16,185,129,0.1)" : q.userAnswer === undefined ? "rgba(245,158,11,0.1)" : "rgba(239,68,68,0.1)";
+              const statusBg = q.isCorrect ? "#f1f5f9" : q.userAnswer === undefined ? "#f1f5f9" : "#f1f5f9";
 
               return (
                 <div key={i} className="an-q-row"
-                  style={{ borderColor: isOpen ? `${statusColor}33` : "rgba(255,255,255,0.05)", background: isOpen ? `${statusColor}08` : "rgba(255,255,255,0.02)" }}
+                  style={{ borderColor: isOpen ? `${statusColor}33` : "#ffffff", background: isOpen ? `${statusColor}08` : "#ffffff" }}
                   onClick={() => setExpandedQ(isOpen ? null : i)}>
 
                   {/* Row header */}
@@ -2003,35 +2105,35 @@ function AnalysisPage({ data, onBack }) {
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, color: "rgba(255,255,255,0.82)", fontSize: 13, fontWeight: 500, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: isOpen ? "unset" : 2, WebkitBoxOrient: "vertical", overflow: isOpen ? "visible" : "hidden" }}>
+                      <p style={{ margin: 0, color: "#334155", fontSize: 13, fontWeight: 500, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: isOpen ? "unset" : 2, WebkitBoxOrient: "vertical", overflow: isOpen ? "visible" : "hidden" }}>
                         {q.q}
                       </p>
-                      {q.topic && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 3, display: "inline-block" }}>{q.subject} • {q.topic}</span>}
+                      {q.topic && <span style={{ fontSize: 10, color: "#64748b", marginTop: 3, display: "inline-block" }}>{q.subject} • {q.topic}</span>}
                     </div>
 
                     {/* Status badge */}
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                       <span style={{ background: statusBg, border: `1px solid ${statusColor}33`, color: statusColor, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>{statusLabel}</span>
-                      <span style={{ color: "rgba(255,255,255,0.25)", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
+                      <span style={{ color: "#64748b", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
                     </div>
                   </div>
 
                   {/* Expanded answer detail */}
                   {isOpen && (
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                         {q.options.map((opt, oi) => {
                           const isCorrectOpt = oi === q.ans;
                           const isUserOpt = oi === q.userAnswer;
-                          let bg = "rgba(255,255,255,0.03)";
-                          let border = "rgba(255,255,255,0.07)";
-                          let textColor = "rgba(255,255,255,0.55)";
-                          if (isCorrectOpt) { bg = "rgba(16,185,129,0.1)"; border = "rgba(16,185,129,0.35)"; textColor = "#10b981"; }
-                          else if (isUserOpt && !isCorrectOpt) { bg = "rgba(239,68,68,0.1)"; border = "rgba(239,68,68,0.35)"; textColor = "#f87171"; }
+                          let bg = "#ffffff";
+                          let border = "#e2e8f0";
+                          let textColor = "#334155";
+                          if (isCorrectOpt) { bg = "#f1f5f9"; border = "#64748b"; textColor = "#10b981"; }
+                          else if (isUserOpt && !isCorrectOpt) { bg = "#f1f5f9"; border = "#64748b"; textColor = "#f87171"; }
 
                           return (
                             <div key={oi} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 9, background: bg, border: `1px solid ${border}` }}>
-                              <span style={{ width: 22, height: 22, borderRadius: "50%", background: isCorrectOpt ? "#10b981" : isUserOpt ? "#f87171" : "rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: isCorrectOpt || isUserOpt ? "#fff" : "rgba(255,255,255,0.3)", flexShrink: 0 }}>
+                              <span style={{ width: 22, height: 22, borderRadius: "50%", background: isCorrectOpt ? "#10b981" : isUserOpt ? "#f87171" : "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: isCorrectOpt || isUserOpt ? "#0f172a" : "#64748b", flexShrink: 0 }}>
                                 {String.fromCharCode(65 + oi)}
                               </span>
                               <span style={{ fontSize: 13, color: textColor, flex: 1 }}>{opt}</span>
@@ -2052,29 +2154,29 @@ function AnalysisPage({ data, onBack }) {
         {/* ── Topics Tab ── */}
         {tab === "topics" && (
           <div>
-            <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
+            <div style={{ color: "#64748b", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>
               Performance by Topic — {topicEntries.length} topics
             </div>
             <div className="an-topic-grid">
               {topicEntries.map(([topic, d]) => {
                 const p = Math.round((d.correct / d.total) * 100);
                 const tc = p >= 60 ? "#10b981" : p >= 40 ? "#f59e0b" : "#f87171";
-                const sc = subjectColors[d.subject] || "#6366f1";
+                const sc = subjectColors[d.subject] || "#2563eb";
                 return (
-                  <div key={topic} style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 13, padding: "14px 16px", transition: "transform 0.15s" }}
+                  <div key={topic} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 13, padding: "14px 16px", transition: "transform 0.15s" }}
                     onMouseEnter={e => e.currentTarget.style.transform = "translateY(-2px)"}
                     onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                       <div>
-                        <div style={{ color: "#fff", fontSize: 13, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{topic}</div>
-                        <span style={{ background: `${sc}18`, color: sc, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: `1px solid ${sc}30` }}>{d.subject}</span>
+                        <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 600, lineHeight: 1.3, marginBottom: 4 }}>{topic}</div>
+                        <span style={{ background: `${sc}18`, color: sc, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: `1px solid ${sc}55` }}>{d.subject}</span>
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 10 }}>
                         <div style={{ fontFamily: "'Space Mono',monospace", fontSize: 20, fontWeight: 700, color: tc, lineHeight: 1 }}>{p}%</div>
-                        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 3 }}>{d.correct}/{d.total}</div>
+                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>{d.correct}/{d.total}</div>
                       </div>
                     </div>
-                    <div style={{ height: 5, background: "rgba(255,255,255,0.06)", borderRadius: 3 }}>
+                    <div style={{ height: 5, background: "#e2e8f0", borderRadius: 3 }}>
                       <div style={{ height: "100%", width: `${p}%`, background: tc, borderRadius: 3, transition: "width 0.8s cubic-bezier(0.4,0,0.2,1)", boxShadow: `0 0 6px ${tc}66` }} />
                     </div>
                   </div>
@@ -2103,32 +2205,32 @@ function AnalysisPage({ data, onBack }) {
 
 //   return (
 //     <div>
-//       <h2 style={{ margin: "0 0 6px", color: "#fff", fontSize: 24, fontWeight: 700 }}>Your Progress</h2>
-//       <p style={{ margin: "0 0 28px", color: "rgba(255,255,255,0.4)", fontSize: 14 }}>Track your improvement over time</p>
+//       <h2 style={{ margin: "0 0 6px", color: "#0f172a", fontSize: 24, fontWeight: 700 }}>Your Progress</h2>
+//       <p style={{ margin: "0 0 28px", color: "#64748b", fontSize: 14 }}>Track your improvement over time</p>
 
 //       <div className="grid-3" style={{ marginBottom: 28 }}>
 //         <StatCard icon={<Flame size={28} color="#f97316" />} value={streak} label="Current Streak" accent="#f97316" />
 //         <StatCard icon={<CheckCircle size={28} color="#10b981" />} value={`${accuracy}%`} label="Overall Accuracy" accent="#10b981" />
-//         <StatCard icon={<FileText size={28} color="#6366f1" />} value={sessions.length} label="Total Papers Solved" accent="#6366f1" />
+//         <StatCard icon={<FileText size={28} color="#2563eb" />} value={sessions.length} label="Total Papers Solved" accent="#2563eb" />
 //       </div>
 
 //       {/* Weekly Bar Chart */}
-//       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 24, marginBottom: 24 }}>
-//         <h4 style={{ color: "#fff", margin: "0 0 20px", fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}><TrendingUp size={18} color="#10b981" /> This Week's Activity</h4>
+//       <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, marginBottom: 24 }}>
+//         <h4 style={{ color: "#0f172a", margin: "0 0 20px", fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}><TrendingUp size={18} color="#10b981" /> This Week's Activity</h4>
 //         <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 140 }}>
 //           {weekly.map((d, i) => (
 //             <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-//               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "'Space Mono',monospace" }}>{d.sessions > 0 ? d.sessions : ""}</div>
-//               <div style={{ width: "100%", background: d.sessions > 0 ? "linear-gradient(180deg,#6366f1,#8b5cf6)" : "rgba(255,255,255,0.06)", borderRadius: "6px 6px 0 0", height: d.sessions > 0 ? `${Math.max(20, d.sessions * 50)}px` : "8px", transition: "height 0.5s ease" }} />
-//               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{d.day}</div>
+//               <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'Space Mono',monospace" }}>{d.sessions > 0 ? d.sessions : ""}</div>
+//               <div style={{ width: "100%", background: d.sessions > 0 ? "linear-gradient(180deg,#2563eb,#1d4ed8)" : "#e2e8f0", borderRadius: "6px 6px 0 0", height: d.sessions > 0 ? `${Math.max(20, d.sessions * 50)}px` : "8px", transition: "height 0.5s ease" }} />
+//               <div style={{ fontSize: 11, color: "#64748b" }}>{d.day}</div>
 //             </div>
 //           ))}
 //         </div>
 //       </div>
 
 //       {/* Achievements */}
-//       <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 24 }}>
-//         <h4 style={{ color: "#fff", margin: "0 0 16px", fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}><Award size={18} color="#f59e0b" /> Achievements</h4>
+//       <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24 }}>
+//         <h4 style={{ color: "#0f172a", margin: "0 0 16px", fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}><Award size={18} color="#f59e0b" /> Achievements</h4>
 //         <div className="grid-3">
 //           {[
 //             { icon: <Flame size={24} />, label: "7-Day Streak", unlocked: streak >= 7 },
@@ -2138,9 +2240,9 @@ function AnalysisPage({ data, onBack }) {
 //             { icon: <Trophy size={24} />, label: "30-Day Streak", unlocked: streak >= 30 },
 //             { icon: <Award size={24} />, label: "Perfect Score", unlocked: sessions.some(s => s.correct === s.total) },
 //           ].map(({ icon, label, unlocked }) => (
-//             <div key={label} style={{ padding: "14px", borderRadius: 12, border: `1px solid ${unlocked ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)"}`, background: unlocked ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.02)", textAlign: "center", opacity: unlocked ? 1 : 0.4 }}>
+//             <div key={label} style={{ padding: "14px", borderRadius: 12, border: `1px solid ${unlocked ? "#64748b" : "#e2e8f0"}`, background: unlocked ? "#f1f5f9" : "#ffffff", textAlign: "center", opacity: unlocked ? 1 : 0.4 }}>
 //               <div style={{ fontSize: 24, marginBottom: 6 }}>{icon}</div>
-//               <div style={{ color: unlocked ? "#a5b4fc" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 600 }}>{label}</div>
+//               <div style={{ color: unlocked ? "#3b82f6" : "#64748b", fontSize: 11, fontWeight: 600 }}>{label}</div>
 //             </div>
 //           ))}
 //         </div>
@@ -2159,27 +2261,27 @@ function AnalysisPage({ data, onBack }) {
 //     Mathematics: ["Algebra", "Trigonometry", "Coordinate Geometry", "Vectors & 3D", "Calculus", "Differential Equations", "Probability & Statistics", "Matrices & Determinants", "Complex Numbers", "Sequences & Series", "Binomial Theorem", "Permutations & Combinations", "Logarithms", "Functions & Relations", "Limits & Continuity"],
 //   };
 //   const [open, setOpen] = useState("Physics");
-//   const colors = { Physics: "#6366f1", Chemistry: "#10b981", Mathematics: "#f59e0b" };
+//   const colors = { Physics: "#2563eb", Chemistry: "#10b981", Mathematics: "#f59e0b" };
 
 //   return (
 //     <div>
-//       <h2 style={{ margin: "0 0 6px", color: "#fff", fontSize: 24, fontWeight: 700 }}>TG EMCET Syllabus</h2>
-//       <p style={{ margin: "0 0 28px", color: "rgba(255,255,255,0.4)", fontSize: 14 }}>Official chapter-wise breakdown</p>
+//       <h2 style={{ margin: "0 0 6px", color: "#0f172a", fontSize: 24, fontWeight: 700 }}>TG EMCET Syllabus</h2>
+//       <p style={{ margin: "0 0 28px", color: "#64748b", fontSize: 14 }}>Official chapter-wise breakdown</p>
 
 //       {Object.entries(syllabus).map(([subj, topics]) => (
 //         <div key={subj} style={{ marginBottom: 16 }}>
 //           <button onClick={() => setOpen(open === subj ? null : subj)}
-//             style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "rgba(255,255,255,0.03)", border: `1px solid ${open === subj ? colors[subj] + "44" : "rgba(255,255,255,0.07)"}`, borderRadius: open === subj ? "12px 12px 0 0" : 12, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
-//             <span style={{ color: "#fff", fontWeight: 600, fontSize: 15 }}>{subj}</span>
-//             <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>{topics.length} chapters {open === subj ? "▲" : "▼"}</span>
+//             style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "#ffffff", border: `1px solid ${open === subj ? colors[subj] + "44" : "#e2e8f0"}`, borderRadius: open === subj ? "12px 12px 0 0" : 12, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
+//             <span style={{ color: "#0f172a", fontWeight: 600, fontSize: 15 }}>{subj}</span>
+//             <span style={{ color: "#64748b", fontSize: 13 }}>{topics.length} chapters {open === subj ? "▲" : "▼"}</span>
 //           </button>
 //           {open === subj && (
-//             <div style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${colors[subj]}22`, borderTop: "none", borderRadius: "0 0 12px 12px", padding: "12px 20px" }}>
+//             <div style={{ background: "#ffffff", border: `1px solid ${colors[subj]}22`, borderTop: "none", borderRadius: "0 0 12px 12px", padding: "12px 20px" }}>
 //               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
 //                 {topics.map((t, i) => (
-//                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "rgba(255,255,255,0.03)", borderRadius: 8 }}>
+//                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#ffffff", borderRadius: 8 }}>
 //                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: colors[subj], flexShrink: 0 }} />
-//                     <span style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>{t}</span>
+//                     <span style={{ color: "#475569", fontSize: 12 }}>{t}</span>
 //                   </div>
 //                 ))}
 //               </div>
@@ -2228,7 +2330,7 @@ function ProgressPage({ sessions, streak, accuracy }) {
     }
   });
   const subjects = [
-    { name: "Physics",     color: "#6366f1", icon: "⚛️" },
+    { name: "Physics",     color: "#2563eb", icon: "⚛️" },
     { name: "Chemistry",   color: "#10b981", icon: "🧪" },
     { name: "Mathematics", color: "#f59e0b", icon: "📐" },
   ];
@@ -2243,10 +2345,10 @@ function ProgressPage({ sessions, streak, accuracy }) {
   const achievements = [
     { icon: <Zap   size={20} />, label: "First Paper",    desc: "Complete 1 paper",     unlocked: totalPapers >= 1,  color: "#f59e0b" },
     { icon: <Flame size={20} />, label: "3-Day Streak",   desc: "3 days in a row",      unlocked: streak >= 3,       color: "#f97316" },
-    { icon: <FileText size={20}/>, label: "5 Papers",     desc: "Solve 5 papers",       unlocked: totalPapers >= 5,  color: "#6366f1" },
+    { icon: <FileText size={20}/>, label: "5 Papers",     desc: "Solve 5 papers",       unlocked: totalPapers >= 5,  color: "#2563eb" },
     { icon: <Target size={20}/>, label: "80% Accuracy",   desc: "Reach 80% accuracy",   unlocked: accuracy >= 80,    color: "#10b981" },
     { icon: <Flame size={20} />, label: "7-Day Streak",   desc: "7 days in a row",      unlocked: streak >= 7,       color: "#f97316" },
-    { icon: <Trophy size={20}/>, label: "Perfect Score",  desc: "Score 100% on a paper",unlocked: sessions.some(s => s.correct === s.total), color: "#a5b4fc" },
+    { icon: <Trophy size={20}/>, label: "Perfect Score",  desc: "Score 100% on a paper",unlocked: sessions.some(s => s.correct === s.total), color: "#3b82f6" },
     { icon: <Award size={20} />, label: "30-Day Streak",  desc: "30 days in a row",     unlocked: streak >= 30,      color: "#ec4899" },
     { icon: <Star  size={20} />, label: "Top Scorer",     desc: "Score 90%+ on a paper",unlocked: bestScore >= 90,   color: "#f59e0b" },
   ];
@@ -2271,16 +2373,16 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
         .pg-card {
           border-radius:16px; padding:20px;
-          background:rgba(255,255,255,0.025);
-          border:1px solid rgba(255,255,255,0.06);
+          background:#ffffff;
+          border:1px solid #e2e8f0;
         }
         .pg-stat-card {
           border-radius:16px; padding:18px 16px;
-          background:rgba(255,255,255,0.025);
+          background:#ffffff;
           position:relative; overflow:hidden;
           transition:transform 0.2s, box-shadow 0.2s;
         }
-        .pg-stat-card:hover { transform:translateY(-3px); box-shadow:0 12px 28px rgba(0,0,0,0.3); }
+        .pg-stat-card:hover { transform:translateY(-3px); box-shadow:0 12px 28px #64748b; }
 
         .pg-bar-col {
           flex:1; display:flex; flex-direction:column; align-items:center;
@@ -2291,8 +2393,8 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
         .pg-bar-tooltip {
           position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%) translateY(4px);
-          background:#1e2236; border:1px solid rgba(255,255,255,0.1); border-radius:8px;
-          padding:5px 10px; font-size:11px; color:#fff; white-space:nowrap;
+          background:#1e2236; border:1px solid #f1f5f9; border-radius:8px;
+          padding:5px 10px; font-size:11px; color:#0f172a; white-space:nowrap;
           opacity:0; transition:opacity 0.18s, transform 0.18s;
           pointer-events:none; z-index:10;
         }
@@ -2302,7 +2404,7 @@ function ProgressPage({ sessions, streak, accuracy }) {
           transition:transform 0.18s, box-shadow 0.18s;
           position:relative; overflow:hidden;
         }
-        .pg-ach-card.unlocked:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,0.3); }
+        .pg-ach-card.unlocked:hover { transform:translateY(-3px); box-shadow:0 8px 24px #64748b; }
 
         @media (max-width:900px) {
           .pg-stats-grid { grid-template-columns:repeat(2,1fr); }
@@ -2317,8 +2419,8 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
       {/* ── Page Header ── */}
       <div className="pg-fade pg-f1" style={{ marginBottom:26 }}>
-        <h2 style={{ margin:"0 0 5px", color:"#fff", fontSize:24, fontWeight:700, letterSpacing:-0.4 }}>Your Progress</h2>
-        <p style={{ margin:0, color:"rgba(255,255,255,0.38)", fontSize:13 }}>
+        <h2 style={{ margin:"0 0 5px", color:"#0f172a", fontSize:24, fontWeight:700, letterSpacing:-0.4 }}>Your Progress</h2>
+        <p style={{ margin:0, color:"#64748b", fontSize:13 }}>
           {totalPapers > 0
             ? `${totalPapers} paper${totalPapers!==1?"s":""} solved · ${unlockedCount}/${achievements.length} achievements unlocked`
             : "Start solving papers to track your progress"}
@@ -2330,7 +2432,7 @@ function ProgressPage({ sessions, streak, accuracy }) {
         {[
           { icon:<Flame size={20} color="#f97316"/>, value:streak,          label:"Day Streak",    sub: streak>=3?"🔥 On fire!":"Build it up", accent:"#f97316" },
           { icon:<CheckCircle size={20} color="#10b981"/>, value:`${accuracy}%`, label:"Avg Accuracy",  sub: accuracy>=70?"Excellent":accuracy>=50?"Keep going":"Needs work", accent:"#10b981" },
-          { icon:<FileText size={20} color="#6366f1"/>, value:totalPapers,   label:"Papers Solved", sub:`${thisWeekCount} this week`, accent:"#6366f1" },
+          { icon:<FileText size={20} color="#2563eb"/>, value:totalPapers,   label:"Papers Solved", sub:`${thisWeekCount} this week`, accent:"#2563eb" },
           { icon:<Star size={20} color="#f59e0b"/>,     value:`${bestScore}%`, label:"Best Score",    sub:"All time high", accent:"#f59e0b" },
         ].map(({ icon, value, label, sub, accent }) => (
           <div key={label} className="pg-stat-card" style={{ border:`1px solid ${accent}20` }}>
@@ -2339,7 +2441,7 @@ function ProgressPage({ sessions, streak, accuracy }) {
               {icon}
             </div>
             <div style={{ fontFamily:"'Space Mono',monospace", fontSize:26, fontWeight:700, color:accent, letterSpacing:-1, lineHeight:1 }}>{value}</div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", marginTop:4, fontWeight:500 }}>{label}</div>
+            <div style={{ fontSize:12, color:"#334155", marginTop:4, fontWeight:500 }}>{label}</div>
             <div style={{ fontSize:10, color:`${accent}aa`, marginTop:5, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>{sub}</div>
           </div>
         ))}
@@ -2352,17 +2454,17 @@ function ProgressPage({ sessions, streak, accuracy }) {
         <div className="pg-card">
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
             <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-              <div style={{ width:32, height:32, borderRadius:9, background:"rgba(16,185,129,0.12)", border:"1px solid rgba(16,185,129,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(16,185,129,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <TrendingUp size={16} color="#10b981" />
               </div>
               <div>
-                <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>Weekly Activity</div>
-                <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>Papers solved per day</div>
+                <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Weekly Activity</div>
+                <div style={{ color:"#64748b", fontSize:11 }}>Papers solved per day</div>
               </div>
             </div>
             <div style={{ textAlign:"right" }}>
               <div style={{ fontFamily:"'Space Mono',monospace", fontSize:18, fontWeight:700, color:"#10b981" }}>{thisWeekCount}</div>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>this week</div>
+              <div style={{ fontSize:10, color:"#64748b" }}>this week</div>
             </div>
           </div>
 
@@ -2378,13 +2480,13 @@ function ProgressPage({ sessions, streak, accuracy }) {
                   </div>
 
                   {/* Value label */}
-                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", fontFamily:"'Space Mono',monospace", minHeight:16, display:"flex", alignItems:"center", marginBottom:4 }}>
+                  <div style={{ fontSize:10, color:"#64748b", fontFamily:"'Space Mono',monospace", minHeight:16, display:"flex", alignItems:"center", marginBottom:4 }}>
                     {d.sessions > 0 ? d.sessions : ""}
                   </div>
 
                   {/* Bar track */}
                   <div style={{ width:"100%", flex:1, display:"flex", alignItems:"flex-end", position:"relative" }}>
-                    <div style={{ width:"100%", height:"100%", background:"rgba(255,255,255,0.04)", borderRadius:6, position:"absolute", bottom:0 }} />
+                    <div style={{ width:"100%", height:"100%", background:"#ffffff", borderRadius:6, position:"absolute", bottom:0 }} />
                     <div
                       className="pg-bar-inner"
                       style={{
@@ -2393,21 +2495,21 @@ function ProgressPage({ sessions, streak, accuracy }) {
                         background: d.isToday
                           ? "linear-gradient(180deg,#10b981,#059669)"
                           : d.sessions > 0
-                            ? "linear-gradient(180deg,#818cf8,#6366f1)"
-                            : "rgba(255,255,255,0.06)",
+                            ? "linear-gradient(180deg,#818cf8,#2563eb)"
+                            : "#e2e8f0",
                         borderRadius:"6px 6px 0 0",
                         transition:"height 0.6s cubic-bezier(0.4,0,0.2,1)",
                         position:"relative",
-                        boxShadow: d.sessions > 0 ? (d.isToday ? "0 0 10px rgba(16,185,129,0.4)" : "0 0 10px rgba(99,102,241,0.35)") : "none",
+                        boxShadow: d.sessions > 0 ? (d.isToday ? "0 0 10px #64748b" : "0 0 10px #64748b") : "none",
                       }}
                     />
                   </div>
 
                   {/* Day label */}
-                  <div style={{ fontSize:11, color: d.isToday ? "#a5b4fc" : "rgba(255,255,255,0.38)", marginTop:8, fontWeight: d.isToday ? 700 : 400 }}>
+                  <div style={{ fontSize:11, color: d.isToday ? "#3b82f6" : "#64748b", marginTop:8, fontWeight: d.isToday ? 700 : 400 }}>
                     {d.day}
                   </div>
-                  {d.isToday && <div style={{ width:4, height:4, borderRadius:"50%", background:"#6366f1", marginTop:2 }} />}
+                  {d.isToday && <div style={{ width:4, height:4, borderRadius:"50%", background:"#2563eb", marginTop:2 }} />}
                 </div>
               );
             })}
@@ -2415,14 +2517,14 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
           {/* Accuracy sparkline hint */}
           {sessions.length > 0 && (
-            <div style={{ marginTop:16, paddingTop:14, borderTop:"1px solid rgba(255,255,255,0.05)", display:"flex", gap:16 }}>
+            <div style={{ marginTop:16, paddingTop:14, borderTop:"1px solid #ffffff", display:"flex", gap:16 }}>
               <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                <div style={{ width:10, height:10, borderRadius:3, background:"linear-gradient(135deg,#818cf8,#6366f1)" }} />
-                <span style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>Past days</span>
+                <div style={{ width:10, height:10, borderRadius:3, background:"linear-gradient(135deg,#818cf8,#2563eb)" }} />
+                <span style={{ fontSize:10, color:"#64748b" }}>Past days</span>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                 <div style={{ width:10, height:10, borderRadius:3, background:"linear-gradient(135deg,#10b981,#059669)" }} />
-                <span style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>Today</span>
+                <span style={{ fontSize:10, color:"#64748b" }}>Today</span>
               </div>
             </div>
           )}
@@ -2431,19 +2533,19 @@ function ProgressPage({ sessions, streak, accuracy }) {
         {/* Subject Breakdown */}
         <div className="pg-card" style={{ display:"flex", flexDirection:"column" }}>
           <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:20 }}>
-            <div style={{ width:32, height:32, borderRadius:9, background:"rgba(99,102,241,0.12)", border:"1px solid rgba(99,102,241,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(99,102,241,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
               <BarChart2 size={16} color="#818cf8" />
             </div>
             <div>
-              <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>Subject Mastery</div>
-              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>Cumulative accuracy</div>
+              <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Subject Mastery</div>
+              <div style={{ color:"#64748b", fontSize:11 }}>Cumulative accuracy</div>
             </div>
           </div>
 
           {!sessions.length ? (
             <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8, padding:"20px 0" }}>
-              <BarChart2 size={28} color="rgba(255,255,255,0.12)" />
-              <p style={{ color:"rgba(255,255,255,0.25)", fontSize:12, margin:0, textAlign:"center" }}>Complete papers to see subject breakdown</p>
+              <BarChart2 size={28} color="#f1f5f9" />
+              <p style={{ color:"#64748b", fontSize:12, margin:0, textAlign:"center" }}>Complete papers to see subject breakdown</p>
             </div>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:18, flex:1 }}>
@@ -2456,16 +2558,16 @@ function ProgressPage({ sessions, streak, accuracy }) {
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:7 }}>
                         <span style={{ fontSize:15 }}>{icon}</span>
-                        <span style={{ color:"rgba(255,255,255,0.75)", fontSize:13, fontWeight:600 }}>{name}</span>
+                        <span style={{ color:"#334155", fontSize:13, fontWeight:600 }}>{name}</span>
                       </div>
                       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        {has && <span style={{ color:"rgba(255,255,255,0.25)", fontSize:10 }}>{data.correct}/{data.total}</span>}
-                        <span style={{ fontFamily:"'Space Mono',monospace", fontSize:14, fontWeight:700, color: has ? color : "rgba(255,255,255,0.18)", minWidth:38, textAlign:"right" }}>
+                        {has && <span style={{ color:"#64748b", fontSize:10 }}>{data.correct}/{data.total}</span>}
+                        <span style={{ fontFamily:"'Space Mono',monospace", fontSize:14, fontWeight:700, color: has ? color : "rgba(37,99,235,0.15)", minWidth:38, textAlign:"right" }}>
                           {has ? `${pct}%` : "—"}
                         </span>
                       </div>
                     </div>
-                    <div style={{ height:8, background:"rgba(255,255,255,0.05)", borderRadius:6, overflow:"hidden" }}>
+                    <div style={{ height:8, background:"#ffffff", borderRadius:6, overflow:"hidden" }}>
                       <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${color}bb,${color})`, borderRadius:6, boxShadow:`0 0 8px ${color}55`, transition:"width 1.1s cubic-bezier(0.4,0,0.2,1)" }} />
                     </div>
                   </div>
@@ -2481,15 +2583,15 @@ function ProgressPage({ sessions, streak, accuracy }) {
         <div className="pg-card pg-fade pg-f4" style={{ marginBottom:22 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
             <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-              <div style={{ width:32, height:32, borderRadius:9, background:"rgba(99,102,241,0.12)", border:"1px solid rgba(99,102,241,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(99,102,241,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <FileText size={16} color="#818cf8" />
               </div>
               <div>
-                <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>Recent Sessions</div>
-                <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>Last {Math.min(sessions.length,6)} papers</div>
+                <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Recent Sessions</div>
+                <div style={{ color:"#64748b", fontSize:11 }}>Last {Math.min(sessions.length,6)} papers</div>
               </div>
             </div>
-            <span style={{ color:"rgba(255,255,255,0.25)", fontSize:11 }}>{totalPapers} total</span>
+            <span style={{ color:"#64748b", fontSize:11 }}>{totalPapers} total</span>
           </div>
 
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -2497,21 +2599,21 @@ function ProgressPage({ sessions, streak, accuracy }) {
               const pct  = Math.round((s.correct / s.total) * 100);
               const good = pct >= 60;
               return (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.05)", borderRadius:11, transition:"background 0.15s" }}
-                  onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.04)"}
-                  onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.02)"}>
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", background:"#ffffff", border:"1px solid #ffffff", borderRadius:11, transition:"background 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.background="#ffffff"}
+                  onMouseLeave={e => e.currentTarget.style.background="#ffffff"}>
                   {/* Score badge */}
-                  <div style={{ width:38, height:38, borderRadius:10, background: good?"rgba(16,185,129,0.1)":"rgba(239,68,68,0.1)", border:`1px solid ${good?"rgba(16,185,129,0.25)":"rgba(239,68,68,0.25)"}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <div style={{ width:38, height:38, borderRadius:10, background: good?"#f1f5f9":"#f1f5f9", border:`1px solid ${good?"rgba(16,185,129,0.25)":"rgba(239,68,68,0.25)"}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                     <span style={{ fontFamily:"'Space Mono',monospace", fontSize:11, fontWeight:700, color: good?"#10b981":"#f87171" }}>{pct}%</span>
                   </div>
                   {/* Info */}
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ color:"#fff", fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.paperLabel || "Practice Paper"}</div>
-                    <div style={{ color:"rgba(255,255,255,0.3)", fontSize:11, marginTop:2 }}>{s.date}</div>
+                    <div style={{ color:"#0f172a", fontSize:13, fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.paperLabel || "Practice Paper"}</div>
+                    <div style={{ color:"#64748b", fontSize:11, marginTop:2 }}>{s.date}</div>
                   </div>
                   {/* Mini bar + score */}
                   <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-                    <div style={{ width:56, height:5, background:"rgba(255,255,255,0.06)", borderRadius:3, overflow:"hidden" }}>
+                    <div style={{ width:56, height:5, background:"#e2e8f0", borderRadius:3, overflow:"hidden" }}>
                       <div style={{ height:"100%", width:`${pct}%`, background: good?"#10b981":"#f87171", borderRadius:3 }} />
                     </div>
                     <div style={{ textAlign:"right", minWidth:36 }}>
@@ -2529,16 +2631,16 @@ function ProgressPage({ sessions, streak, accuracy }) {
       <div className="pg-card pg-fade pg-f5">
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:18 }}>
           <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-            <div style={{ width:32, height:32, borderRadius:9, background:"rgba(245,158,11,0.12)", border:"1px solid rgba(245,158,11,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <div style={{ width:32, height:32, borderRadius:9, background:"#f1f5f9", border:"1px solid rgba(245,158,11,0.22)", display:"flex", alignItems:"center", justifyContent:"center" }}>
               <Award size={16} color="#f59e0b" />
             </div>
             <div>
-              <div style={{ color:"#fff", fontSize:14, fontWeight:700 }}>Achievements</div>
-              <div style={{ color:"rgba(255,255,255,0.35)", fontSize:11 }}>{unlockedCount} of {achievements.length} unlocked</div>
+              <div style={{ color:"#0f172a", fontSize:14, fontWeight:700 }}>Achievements</div>
+              <div style={{ color:"#64748b", fontSize:11 }}>{unlockedCount} of {achievements.length} unlocked</div>
             </div>
           </div>
           {/* Progress bar */}
-          <div style={{ width:80, height:5, background:"rgba(255,255,255,0.06)", borderRadius:3, overflow:"hidden" }}>
+          <div style={{ width:80, height:5, background:"#e2e8f0", borderRadius:3, overflow:"hidden" }}>
             <div style={{ height:"100%", width:`${(unlockedCount/achievements.length)*100}%`, background:"linear-gradient(90deg,#f59e0b,#f97316)", borderRadius:3 }} />
           </div>
         </div>
@@ -2547,18 +2649,18 @@ function ProgressPage({ sessions, streak, accuracy }) {
           {achievements.map(({ icon, label, desc, unlocked, color }) => (
             <div key={label} className={`pg-ach-card ${unlocked?"unlocked":""}`}
               style={{
-                background: unlocked ? `${color}10` : "rgba(255,255,255,0.02)",
-                border: `1px solid ${unlocked ? `${color}30` : "rgba(255,255,255,0.06)"}`,
+                background: unlocked ? `${color}10` : "#ffffff",
+                border: `1px solid ${unlocked ? `${color}30` : "#e2e8f0"}`,
                 opacity: unlocked ? 1 : 0.45,
               }}>
               {/* Glow */}
               {unlocked && <div style={{ position:"absolute", top:-20, left:"50%", transform:"translateX(-50%)", width:50, height:50, borderRadius:"50%", background:`${color}20`, pointerEvents:"none" }} />}
               {/* Icon */}
-              <div style={{ width:40, height:40, borderRadius:11, background: unlocked?`${color}18`:"rgba(255,255,255,0.04)", border:`1px solid ${unlocked?`${color}30`:"rgba(255,255,255,0.07)"}`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 10px", color: unlocked?color:"rgba(255,255,255,0.3)" }}>
+              <div style={{ width:40, height:40, borderRadius:11, background: unlocked?`${color}18`:"#ffffff", border:`1px solid ${unlocked?`${color}30`:"#e2e8f0"}`, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 10px", color: unlocked?color:"#64748b" }}>
                 {icon}
               </div>
-              <div style={{ color: unlocked?"#fff":"rgba(255,255,255,0.4)", fontSize:12, fontWeight:700, marginBottom:4, lineHeight:1.3 }}>{label}</div>
-              <div style={{ color:"rgba(255,255,255,0.28)", fontSize:10, lineHeight:1.4 }}>{desc}</div>
+              <div style={{ color: unlocked?"#0f172a":"#64748b", fontSize:12, fontWeight:700, marginBottom:4, lineHeight:1.3 }}>{label}</div>
+              <div style={{ color:"#64748b", fontSize:10, lineHeight:1.4 }}>{desc}</div>
               {unlocked && (
                 <div style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:4, background:`${color}15`, border:`1px solid ${color}30`, borderRadius:20, padding:"2px 8px" }}>
                   <CheckCircle size={9} color={color} />
@@ -2582,21 +2684,33 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setFetchError(null);
-      try {
-        const data = await db.getCollection("leaderboard");
-        setRows(data || []);
-      } catch (e) {
-        console.error("Leaderboard fetch failed:", e);
-        setFetchError(e?.message || "Failed to load rankings");
-      }
+    if (!window._firebaseDb) {
+      setLoading(false);
+      return;
+    }
+    
+    setLoading(true);
+    setFetchError(null);
+
+    try {
+      const q = collection(window._firebaseDb, "leaderboard");
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setRows(data);
+        setLoading(false);
+      }, (error) => {
+        console.error("Leaderboard real-time fetch failed:", error);
+        setFetchError(error.message || "Failed to load rankings");
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.error("Leaderboard setup failed:", e);
+      setFetchError(e.message || "Failed to setup rankings");
       setLoading(false);
     }
-    load();
-  }, [refreshKey]);
-
+  }, []);
   // Always show the current user even before Firestore syncs
   const totalPapers = sessions.length;
   const hasMyRow = rows.some(r => r.uid === user?.uid);
@@ -2619,23 +2733,23 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       <style>{`
         @keyframes lbRowIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
         .lb-row { animation: lbRowIn 0.25s ease both; transition: background 0.15s; }
-        .lb-row:hover { background: rgba(255,255,255,0.045) !important; }
+        .lb-row:hover { background: #ffffff !important; }
       `}</style>
 
       {/* Header row */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:10 }}>
         <div>
-          <h2 style={{ margin:"0 0 4px", color:"#fff", fontSize:22, fontWeight:700, letterSpacing:-0.4 }}>Leaderboard</h2>
-          <p style={{ margin:0, color:"rgba(255,255,255,0.38)", fontSize:13 }}>Live rankings from all students</p>
+          <h2 style={{ margin:"0 0 4px", color:"#0f172a", fontSize:22, fontWeight:700, letterSpacing:-0.4 }}>Leaderboard</h2>
+          <p style={{ margin:0, color:"#64748b", fontSize:13 }}>Live rankings from all students</p>
         </div>
-        <button onClick={() => setRefreshKey(k => k+1)} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:20, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"rgba(255,255,255,0.45)", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Sora',sans-serif", transition:"all 0.15s" }}>
+        <button onClick={() => setRefreshKey(k => k+1)} style={{ display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:20, border:"1px solid #f1f5f9", background:"transparent", color:"#64748b", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Sora',sans-serif", transition:"all 0.15s" }}>
           ↻ Refresh
         </button>
       </div>
 
       {/* Status badge */}
       <div style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 12px", borderRadius:20, marginBottom:18,
-        background: isFirebaseConnected ? "rgba(16,185,129,0.08)" : "rgba(245,158,11,0.08)",
+        background: isFirebaseConnected ? "#e2e8f0" : "#e2e8f0",
         border: `1px solid ${isFirebaseConnected ? "rgba(16,185,129,0.28)" : "rgba(245,158,11,0.28)"}` }}>
         <div style={{ width:7, height:7, borderRadius:"50%", background: isFirebaseConnected ? "#10b981" : "#f59e0b" }} />
         <span style={{ fontSize:11, fontWeight:600, color: isFirebaseConnected ? "#10b981" : "#f59e0b" }}>
@@ -2644,11 +2758,11 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       </div>
 
       {/* Sort tabs */}
-      <div style={{ display:"flex", gap:4, marginBottom:20, background:"rgba(255,255,255,0.04)", borderRadius:10, padding:4, width:"fit-content" }}>
+      <div style={{ display:"flex", gap:4, marginBottom:20, background:"#ffffff", borderRadius:10, padding:4, width:"fit-content" }}>
         {[{id:"streak",label:"Streak",icon:<Flame size={13}/>},{id:"accuracy",label:"Accuracy",icon:<Target size={13}/>}].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding:"7px 18px", borderRadius:8, border:"none", cursor:"pointer", fontFamily:"'Sora',sans-serif", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:5, transition:"all 0.15s",
-              background: tab===t.id ? "#6366f1" : "transparent", color: tab===t.id ? "#fff" : "rgba(255,255,255,0.45)" }}>
+              background: tab===t.id ? "#2563eb" : "transparent", color: tab===t.id ? "#ffffff" : "#64748b" }}>
             {t.icon} {t.label}
           </button>
         ))}
@@ -2656,7 +2770,7 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
 
       {/* Error state */}
       {fetchError && !loading && (
-        <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.22)", borderRadius:12, padding:"12px 16px", marginBottom:16, color:"#fca5a5", fontSize:12 }}>
+        <div style={{ background:"#e2e8f0", border:"1px solid rgba(239,68,68,0.22)", borderRadius:12, padding:"12px 16px", marginBottom:16, color:"#fca5a5", fontSize:12 }}>
           ⚠️ {fetchError} — check your Firestore security rules allow reads on the <code>leaderboard</code> collection.
         </div>
       )}
@@ -2664,14 +2778,14 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       {/* Loading */}
       {loading ? (
         <div style={{ textAlign:"center", padding:60 }}>
-          <div style={{ width:34, height:34, border:"3px solid rgba(99,102,241,0.2)", borderTop:"3px solid #6366f1", borderRadius:"50%", margin:"0 auto 12px", animation:"spin 0.8s linear infinite" }} />
-          <p style={{ color:"rgba(255,255,255,0.35)", fontSize:13 }}>Fetching live rankings…</p>
+          <div style={{ width:34, height:34, border:"3px solid rgba(37,99,235,0.1)", borderTop:"3px solid #2563eb", borderRadius:"50%", margin:"0 auto 12px", animation:"spin 0.8s linear infinite" }} />
+          <p style={{ color:"#64748b", fontSize:13 }}>Fetching live rankings…</p>
         </div>
       ) : sorted.length === 0 ? (
-        <div style={{ textAlign:"center", padding:"50px 20px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.05)", borderRadius:16 }}>
-          <Trophy size={34} color="rgba(255,255,255,0.18)" />
-          <p style={{ color:"rgba(255,255,255,0.38)", fontSize:14, margin:"12px 0 4px" }}>No rankings yet</p>
-          <p style={{ color:"rgba(255,255,255,0.2)", fontSize:12, margin:0 }}>Complete a paper to appear here!</p>
+        <div style={{ textAlign:"center", padding:"50px 20px", background:"#ffffff", border:"1px solid #ffffff", borderRadius:16 }}>
+          <Trophy size={34} color="rgba(37,99,235,0.15)" />
+          <p style={{ color:"#64748b", fontSize:14, margin:"12px 0 4px" }}>No rankings yet</p>
+          <p style={{ color:"rgba(37,99,235,0.1)", fontSize:12, margin:0 }}>Complete a paper to appear here!</p>
         </div>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -2680,23 +2794,23 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
             return (
               <div key={student.id || student.uid || i} className="lb-row"
                 style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 18px", borderRadius:12, animationDelay:`${i*0.035}s`,
-                  background: isYou ? "rgba(99,102,241,0.09)" : "rgba(255,255,255,0.027)",
-                  border: `1px solid ${isYou ? "rgba(99,102,241,0.33)" : "rgba(255,255,255,0.06)"}` }}>
+                  background: isYou ? "rgba(99,102,241,0.09)" : "#ffffff",
+                  border: `1px solid ${isYou ? "rgba(99,102,241,0.33)" : "#e2e8f0"}` }}>
 
                 {/* Rank */}
                 <div style={{ width:34, height:34, borderRadius:"50%", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize: i < 3 ? 18 : 13, fontWeight:700, color:"#fff", fontFamily:"'Space Mono',monospace",
-                  background: i===0 ? "linear-gradient(135deg,#f59e0b,#ef4444)" : i===1 ? "linear-gradient(135deg,#94a3b8,#64748b)" : i===2 ? "linear-gradient(135deg,#cd7c2f,#92400e)" : "rgba(255,255,255,0.06)" }}>
+                  fontSize: i < 3 ? 18 : 13, fontWeight:700, color: i < 3 ? "#ffffff" : "#0f172a", fontFamily:"'Space Mono',monospace",
+                  background: i===0 ? "linear-gradient(135deg,#f59e0b,#ef4444)" : i===1 ? "linear-gradient(135deg,#94a3b8,#64748b)" : i===2 ? "linear-gradient(135deg,#cd7c2f,#92400e)" : "#e2e8f0" }}>
                   {i < 3 ? medals[i] : `#${i+1}`}
                 </div>
 
                 {/* Name */}
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ color: isYou ? "#a5b4fc" : "#fff", fontSize:14, fontWeight:600, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                  <div style={{ color: isYou ? "#3b82f6" : "#0f172a", fontSize:14, fontWeight:600, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                     {student.name || "Anonymous"}
-                    {isYou && <span style={{ fontSize:9, color:"#6366f1", background:"rgba(99,102,241,0.15)", border:"1px solid rgba(99,102,241,0.28)", padding:"2px 7px", borderRadius:20, fontWeight:700 }}>YOU</span>}
+                    {isYou && <span style={{ fontSize:9, color:"#2563eb", background:"#e2e8f0", border:"1px solid rgba(99,102,241,0.28)", padding:"2px 7px", borderRadius:20, fontWeight:700 }}>YOU</span>}
                   </div>
-                  <div style={{ color:"rgba(255,255,255,0.28)", fontSize:11, marginTop:2 }}>
+                  <div style={{ color:"#64748b", fontSize:11, marginTop:2 }}>
                     Last active: {student.lastActive || "—"}
                   </div>
                 </div>
@@ -2707,15 +2821,15 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
                     <div style={{ color:"#f97316", fontFamily:"'Space Mono',monospace", fontWeight:700, fontSize:15, display:"flex", alignItems:"center", gap:3 }}>
                       {student.streak ?? 0}<Flame size={12} color="#f97316"/>
                     </div>
-                    <div style={{ color:"rgba(255,255,255,0.25)", fontSize:9 }}>STREAK</div>
+                    <div style={{ color:"#64748b", fontSize:9 }}>STREAK</div>
                   </div>
                   <div style={{ textAlign:"center" }}>
                     <div style={{ color:"#10b981", fontFamily:"'Space Mono',monospace", fontWeight:700, fontSize:15 }}>{student.accuracy ?? 0}%</div>
-                    <div style={{ color:"rgba(255,255,255,0.25)", fontSize:9 }}>SCORE</div>
+                    <div style={{ color:"#64748b", fontSize:9 }}>SCORE</div>
                   </div>
                   <div style={{ textAlign:"center" }}>
-                    <div style={{ color:"#6366f1", fontFamily:"'Space Mono',monospace", fontWeight:700, fontSize:15 }}>{student.papers ?? 0}</div>
-                    <div style={{ color:"rgba(255,255,255,0.25)", fontSize:9 }}>PAPERS</div>
+                    <div style={{ color:"#2563eb", fontFamily:"'Space Mono',monospace", fontWeight:700, fontSize:15 }}>{student.papers ?? 0}</div>
+                    <div style={{ color:"#64748b", fontSize:9 }}>PAPERS</div>
                   </div>
                 </div>
               </div>
@@ -2725,7 +2839,7 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       )}
 
       {!loading && sorted.length > 0 && (
-        <p style={{ color:"rgba(255,255,255,0.18)", fontSize:11, textAlign:"center", marginTop:16 }}>
+        <p style={{ color:"rgba(37,99,235,0.15)", fontSize:11, textAlign:"center", marginTop:16 }}>
           {sorted.length} student{sorted.length !== 1 ? "s" : ""} ranked · press Refresh for latest data
         </p>
       )}
@@ -2741,7 +2855,7 @@ function SyllabusPage() {
 
   const syllabus = {
     Physics: {
-      color: "#6366f1",
+      color: "#2563eb",
       icon: "⚛️",
       units: [
         { name: "Physical World and Measurement", topics: ["Units and dimensions", "Dimensional analysis", "Significant figures"] },
@@ -2813,16 +2927,16 @@ function SyllabusPage() {
       <style>{`
         @keyframes sylFadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
         .syl-fade { animation: sylFadeUp 0.32s ease both; }
-        .syl-unit-card { background:rgba(255,255,255,0.022); border:1px solid rgba(255,255,255,0.06); border-radius:14px; padding:16px; transition:border-color 0.15s, background 0.15s; }
-        .syl-unit-card:hover { background:rgba(255,255,255,0.038); }
-        .syl-topic-pill { display:inline-block; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:3px 10px; font-size:11px; color:rgba(255,255,255,0.5); margin:3px 3px 0 0; }
+        .syl-unit-card { background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:16px; transition:border-color 0.15s, background 0.15s; }
+        .syl-unit-card:hover { background:#ffffff; }
+        .syl-topic-pill { display:inline-block; background:#ffffff; border:1px solid #e2e8f0; border-radius:20px; padding:3px 10px; font-size:11px; color:#334155; margin:3px 3px 0 0; }
         @media(max-width:700px){ .syl-grid { grid-template-columns:1fr !important; } }
       `}</style>
 
       {/* Header */}
       <div className="syl-fade" style={{ marginBottom:22 }}>
-        <h2 style={{ margin:"0 0 4px", color:"#fff", fontSize:22, fontWeight:700, letterSpacing:-0.4 }}>Syllabus</h2>
-        <p style={{ margin:0, color:"rgba(255,255,255,0.38)", fontSize:13 }}>Complete TG EAPCET chapter-by-chapter breakdown</p>
+        <h2 style={{ margin:"0 0 4px", color:"#0f172a", fontSize:22, fontWeight:700, letterSpacing:-0.4 }}>Syllabus</h2>
+        <p style={{ margin:0, color:"#64748b", fontSize:13 }}>Complete TG EAPCET chapter-by-chapter breakdown</p>
       </div>
 
       {/* Subject Tabs */}
@@ -2832,9 +2946,9 @@ function SyllabusPage() {
           const c = syllabus[s].color;
           return (
             <button key={s} onClick={() => setActive(s)} style={{
-              padding:"8px 18px", borderRadius:22, border:`1px solid ${isActive ? c+"55" : "rgba(255,255,255,0.09)"}`,
+              padding:"8px 18px", borderRadius:22, border:`1px solid ${isActive ? c+"55" : "#ffffff"}`,
               background: isActive ? `${c}18` : "transparent",
-              color: isActive ? c : "rgba(255,255,255,0.48)",
+              color: isActive ? c : "#64748b",
               fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"'Sora',sans-serif",
               transition:"all 0.15s", display:"flex", alignItems:"center", gap:6,
             }}>
@@ -2848,8 +2962,8 @@ function SyllabusPage() {
       <div className="syl-fade" style={{ display:"flex", gap:10, marginBottom:18, background:`${color}10`, border:`1px solid ${color}28`, borderRadius:12, padding:"10px 16px", alignItems:"center" }}>
         <span style={{ color, fontSize:20 }}>{icon}</span>
         <div>
-          <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>{active}</span>
-          <span style={{ color:"rgba(255,255,255,0.35)", fontSize:12, marginLeft:8 }}>{units.length} units  •  {units.reduce((a,u)=>a+u.topics.length,0)} topics</span>
+          <span style={{ color:"#0f172a", fontSize:13, fontWeight:700 }}>{active}</span>
+          <span style={{ color:"#64748b", fontSize:12, marginLeft:8 }}>{units.length} units  •  {units.reduce((a,u)=>a+u.topics.length,0)} topics</span>
         </div>
       </div>
 
@@ -2861,7 +2975,7 @@ function SyllabusPage() {
               <div style={{ width:26, height:26, borderRadius:7, background:`${color}18`, border:`1px solid ${color}30`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                 <span style={{ fontFamily:"'Space Mono',monospace", fontSize:10, fontWeight:700, color }}>{String(i+1).padStart(2,"0")}</span>
               </div>
-              <span style={{ color:"#fff", fontSize:13, fontWeight:600, lineHeight:1.3 }}>{unit.name}</span>
+              <span style={{ color:"#0f172a", fontSize:13, fontWeight:600, lineHeight:1.3 }}>{unit.name}</span>
             </div>
             <div>
               {unit.topics.map((t, j) => (
