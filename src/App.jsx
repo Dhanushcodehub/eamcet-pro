@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithPopup, signInWithRedirect } from "firebase/auth";
-import { LayoutDashboard, FileText, TrendingUp, Trophy, BookOpen, Flame, CheckCircle, Star, BarChart2, Medal, Target, Zap, Award, Flag, Timer, PenTool, Check, X, SkipForward } from "lucide-react";
+import { LayoutDashboard, FileText, TrendingUp, Trophy, BookOpen, Flame, CheckCircle, Star, BarChart2, Medal, Target, Zap, Award, Flag, Timer, PenTool, Check, X, SkipForward, Atom, FlaskConical, Compass, Dna } from "lucide-react";
 
 // Firebase initialized in main.jsx and accessible via window._firebaseDb / window._firebaseAuth
 
@@ -1172,9 +1172,9 @@ function StreakCalendar({ sessions, streak }) {
             >
               {/* Check icon on solved cells */}
               {cell.active && (
-                <svg width="55%" height="55%" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6l3 3 5-5" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <div style={{ color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Check size={12} strokeWidth={3} />
+                </div>
               )}
               {/* Dot on today (unsolved) */}
               {cell.isToday && !cell.active && (
@@ -1219,9 +1219,9 @@ function SubjectProgress({ sessions }) {
   });
 
   const subjects = [
-    { name: "Physics", color: "#2563eb", icon: "⚛️" },
-    { name: "Chemistry", color: "#10b981", icon: "🧪" },
-    { name: "Mathematics", color: "#f59e0b", icon: "📐" },
+    { name: "Physics", color: "#2563eb", icon: <Atom size={14} color="#2563eb" /> },
+    { name: "Chemistry", color: "#10b981", icon: <FlaskConical size={14} color="#10b981" /> },
+    { name: "Mathematics", color: "#f59e0b", icon: <Compass size={14} color="#f59e0b" /> },
   ];
 
   return (
@@ -2466,9 +2466,9 @@ function ProgressPage({ sessions, streak, accuracy }) {
     }
   });
   const subjects = [
-    { name: "Physics", color: "#2563eb", icon: "⚛️" },
-    { name: "Chemistry", color: "#10b981", icon: "🧪" },
-    { name: "Mathematics", color: "#f59e0b", icon: "📐" },
+    { name: "Physics", color: "#2563eb", icon: <Atom size={14} color="#2563eb" /> },
+    { name: "Chemistry", color: "#10b981", icon: <FlaskConical size={14} color="#10b981" /> },
+    { name: "Mathematics", color: "#f59e0b", icon: <Compass size={14} color="#f59e0b" /> },
   ];
 
   // ── Derived stats ──────────────────────────────────────────────────────────
@@ -2862,7 +2862,7 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
   );
 
   const isFirebaseConnected = typeof window !== "undefined" && !!window._firebaseDb;
-  const medals = ["🥇", "🥈", "🥉"];
+  // No emojis for medals, use numbers or icons below rank rendering logic.
 
   return (
     <div>
@@ -2941,11 +2941,13 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
 
                 {/* Rank */}
                 <div style={{
-                  width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: i < 3 ? 18 : 13, fontWeight: 700, color: i < 3 ? "#ffffff" : "#0f172a", fontFamily: "'Space Mono',monospace",
-                  background: i === 0 ? "linear-gradient(135deg,#f59e0b,#ef4444)" : i === 1 ? "linear-gradient(135deg,#94a3b8,#64748b)" : i === 2 ? "linear-gradient(135deg,#cd7c2f,#92400e)" : "#e2e8f0"
+                  width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 13, fontWeight: 800, color: i < 3 ? "#ffffff" : "#64748b", fontFamily: "'Space Mono',monospace",
+                  background: i === 0 ? "linear-gradient(135deg,#f59e0b,#ef4444)" : i === 1 ? "linear-gradient(135deg,#94a3b8,#64748b)" : i === 2 ? "linear-gradient(135deg,#cd7c2f,#92400e)" : "#e2e8f0",
+                  border: i < 3 ? "2px solid #ffffff" : "1px solid transparent",
+                  boxShadow: i < 3 ? "0 4px 10px rgba(0,0,0,0.15)" : "none",
                 }}>
-                  {i < 3 ? medals[i] : `#${i + 1}`}
+                  {i + 1}
                 </div>
 
                 {/* Name */}
@@ -3000,7 +3002,7 @@ function SyllabusPage() {
   const syllabus = {
     Physics: {
       color: "#2563eb",
-      icon: "⚛️",
+      icon: <Atom size={20} color="#2563eb" />,
       units: [
         { name: "Physical World and Measurement", topics: ["Units and dimensions", "Dimensional analysis", "Significant figures"] },
         { name: "Kinematics", topics: ["Motion in straight line", "Projectile motion", "Circular motion", "Relative velocity"] },
@@ -3021,7 +3023,7 @@ function SyllabusPage() {
     },
     Chemistry: {
       color: "#10b981",
-      icon: "🧪",
+      icon: <FlaskConical size={20} color="#10b981" />,
       units: [
         { name: "Basic Concepts", topics: ["Mole concept", "Atomic mass", "Stoichiometry", "Limiting reagent"] },
         { name: "Atomic Structure", topics: ["Quantum numbers", "Orbitals", "Electronic configuration", "Periodic trends"] },
@@ -3042,7 +3044,7 @@ function SyllabusPage() {
     },
     Mathematics: {
       color: "#f59e0b",
-      icon: "📐",
+      icon: <Compass size={20} color="#f59e0b" />,
       units: [
         { name: "Sets, Relations & Functions", topics: ["Types of sets", "Functions & inverse", "Composition", "Real-valued functions"] },
         { name: "Algebra: Complex Numbers", topics: ["Argand plane", "Modulus & argument", "De Moivre's theorem"] },
