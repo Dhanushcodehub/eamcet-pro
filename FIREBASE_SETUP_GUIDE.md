@@ -1,4 +1,4 @@
-# 🚀 Beginner's Guide: Connecting Firebase to EMCET Pro
+# 🚀 Beginner's Guide: Connecting Firebase to EAMCET Pro
 
 Don't worry! This takes about 5 minutes. Follow these exact steps and you'll have a live leaderboard in no time.
 
@@ -7,7 +7,7 @@ Don't worry! This takes about 5 minutes. Follow these exact steps and you'll hav
 ### Step 1: Create the Project
 1. Go to the [Firebase Console](https://console.firebase.google.com/).
 2. Click **Add Project**.
-3. Name it `emcet-live`.
+3. Name it `eamcet-live`.
 4. Click **Continue** -> **Continue** -> **Create Project**.
 5. Once it's ready, click **Continue** to enter your dashboard.
 
@@ -35,7 +35,7 @@ Don't worry! This takes about 5 minutes. Follow these exact steps and you'll hav
 ### Step 4: Add your App and Get the Code 🛠️
 1. Go back to your **Project Overview** (click the home icon in the top left).
 2. Click the **Web icon** ( looks like `</>` ).
-3. Register your app as `emcet-web`.
+3. Register your app as `eamcet-web`.
 4. **Copy the code block** that looks like this:
    ```js
    const firebaseConfig = {

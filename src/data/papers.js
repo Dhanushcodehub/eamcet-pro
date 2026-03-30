@@ -1391,7 +1391,7 @@ const ps = [
   {
     id: "2023_full",
     year: "2023",
-    label: "TG EMCET 2023 – Full Paper",
+    label: "TG EAMCET 2023 – Full Paper",
     questions: 160,
     duration: 180,
     subjects: ["Physics", "Chemistry", "Mathematics"],

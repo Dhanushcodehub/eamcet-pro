@@ -364,7 +364,7 @@ export default function App() {
           </>} />
           {/* Default to dashboard for authenticated users */}
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Shell>} />
 
@@ -598,7 +598,7 @@ function AuthPage({ onLogin }) {
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "#ffffff" }}>E</div>
-            <span style={{ fontSize: 24, fontWeight: 800, color: "#171c1f", letterSpacing: -0.8 }}>EMCET<span style={{ color: "#2563eb" }}>Pro</span></span>
+            <span style={{ fontSize: 24, fontWeight: 800, color: "#171c1f", letterSpacing: -0.8 }}>EAMCET <span style={{ color: "#2563eb" }}>Pro</span></span>
           </div>
           <p style={{ color: "#43474d", fontSize: 13, margin: 0, fontWeight: 500, letterSpacing: 0.2 }}>The Curated Intelligence Practice Platform</p>
         </div>
@@ -769,7 +769,7 @@ function Shell({ user, onLogout, children }) {
       <div className="sidebar">
         <div className="sidebar-logo" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 36, paddingLeft: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #2563eb, #1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "#ffffff" }}>E</div>
-          <span style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", letterSpacing: -0.5 }}>EMCET<span style={{ color: "#2563eb" }}>Pro</span></span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", letterSpacing: -0.5 }}>EAMCET <span style={{ color: "#2563eb" }}>Pro</span></span>
         </div>
         <nav className="nav-list">
           {navItems.map(item => (
@@ -3202,6 +3202,40 @@ function SyllabusPage() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── 404 Page ──────────────────────────────────────────────────────────────────
+function NotFound() {
+  const navigate = useNavigate();
+  return (
+    <div style={{ minHeight: "100vh", background: "#f8faff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 20 }}>
+      <SEO title="404 Not Found" description="The page you are looking for does not exist." />
+      <div style={{ fontSize: "clamp(80px, 15vw, 120px)", fontWeight: 900, color: "rgba(37,99,235,0.08)", lineHeight: 1, marginBottom: 20 }}>404</div>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: "#1e293b", marginBottom: 12 }}>Page Not Found</h1>
+      <p style={{ color: "#64748b", maxWidth: 400, marginBottom: 32, lineHeight: 1.6 }}>
+        The link might be broken, or the page may have been moved. Let's get you back on track.
+      </p>
+      <button 
+        onClick={() => navigate("/dashboard")}
+        style={{ 
+          padding: "12px 28px", 
+          background: "#2563eb", 
+          color: "#ffffff", 
+          borderRadius: 12, 
+          border: "none", 
+          fontWeight: 700, 
+          cursor: "pointer", 
+          boxShadow: "0 10px 15px -3px rgba(37,99,235,0.25)",
+          fontFamily: "'Sora', sans-serif",
+          transition: "transform 0.1s"
+        }}
+        onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
+        onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
+      >
+        Back to Dashboard
+      </button>
     </div>
   );
 }

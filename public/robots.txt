@@ -1,0 +1,13 @@
+# EAMCET Pro Robots.txt
+# Optimized for SEO and Search Engine Discoverability
+
+User-agent: *
+Allow: /
+Allow: /dashboard
+Allow: /papers
+Allow: /leaderboard
+Allow: /syllabus
+Allow: /progress
+
+# Sitemaps
+Sitemap: https://eamcetpro.vercel.app/sitemap.xml

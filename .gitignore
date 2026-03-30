@@ -25,6 +25,5 @@ yarn-error.log*
 *.sw?
 
 # Temporary files
-*.txt
 build/
 coverage/
