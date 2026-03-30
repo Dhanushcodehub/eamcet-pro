@@ -182,9 +182,13 @@ const SEO = ({ title, description, path = "" }) => {
       <meta property="og:title" content={fullTitle} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={url} />
+      <meta property="og:image" content="https://eamcetpro.vercel.app/og-image.png?v=2" />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
       <meta property="twitter:title" content={fullTitle} />
       <meta property="twitter:description" content={description} />
       <meta property="twitter:url" content={url} />
+      <meta property="twitter:image" content="https://eamcetpro.vercel.app/og-image.png?v=2" />
       <script type="application/ld+json">
         {JSON.stringify({
           "@context": "https://schema.org",
@@ -604,45 +608,49 @@ function AuthPage({ onLogin }) {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 14, padding: 4, marginBottom: 32 }}>
+        <div role="tablist" style={{ display: "flex", background: "#f1f5f9", borderRadius: 14, padding: 4, marginBottom: 32 }}>
           {["login", "signup"].map(m => (
-            <button key={m} onClick={() => { setMode(m); setErr(""); }}
+            <button key={m} role="tab" aria-selected={mode === m} onClick={() => { setMode(m); setErr(""); }}
               className={`auth-tab-btn ${mode === m ? "active" : ""}`}>
               {m === "login" ? "Sign In" : "Sign Up"}
             </button>
           ))}
         </div>
 
-        {/* Fields */}
-        <div style={{ marginBottom: 24 }}>
-          {mode === "signup" && (
-            <Field label="Full Name" value={name} onChange={setName} placeholder="Ravi Kumar" />
-          )}
-          <Field
-            label="Email Address"
-            value={email}
-            onChange={setEmail}
-            placeholder="student@example.com"
-            type="email"
-            hint={email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "Please enter a valid email" : email && !email.toLowerCase().endsWith("@gmail.com") ? "Gmail recommended for better sync" : ""}
-            hintType={email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "success" : "error"}
-          />
-          <Field
-            label="Password"
-            value={pwd}
-            onChange={setPwd}
-            placeholder="••••••••"
-            type="password"
-            hint={pwd && pwd.length < 6 ? "Minimum 6 characters required" : pwd.length >= 6 ? "Password looks good" : ""}
-            hintType={pwd.length >= 6 ? "success" : "error"}
-          />
-        </div>
+        <form onSubmit={(e) => { e.preventDefault(); handle(); }}>
+          {/* Fields */}
+          <div style={{ marginBottom: 24 }}>
+            {mode === "signup" && (
+              <Field label="Full Name" value={name} onChange={setName} placeholder="Ravi Kumar" />
+            )}
+            <Field
+              label="Email Address"
+              value={email}
+              onChange={setEmail}
+              placeholder="student@example.com"
+              type="email"
+              autoComplete="email"
+              hint={email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "Please enter a valid email" : email && !email.toLowerCase().endsWith("@gmail.com") ? "Gmail recommended for better sync" : ""}
+              hintType={email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "success" : "error"}
+            />
+            <Field
+              label="Password"
+              value={pwd}
+              onChange={setPwd}
+              placeholder="••••••••"
+              type="password"
+              autoComplete="current-password"
+              hint={pwd && pwd.length < 6 ? "Minimum 6 characters required" : pwd.length >= 6 ? "Password looks good" : ""}
+              hintType={pwd.length >= 6 ? "success" : "error"}
+            />
+          </div>
 
-        <NotificationBar message={err} type="error" onClose={() => setErr("")} />
+          <NotificationBar message={err} type="error" onClose={() => setErr("")} />
 
-        <button onClick={handle} disabled={loading} className="btn-primary">
-          {loading ? "Optimizing..." : mode === "login" ? "Enter Dashboard →" : "Create Account →"}
-        </button>
+          <button type="submit" disabled={loading} className="btn-primary">
+            {loading ? "Optimizing..." : mode === "login" ? "Enter Dashboard →" : "Create Account →"}
+          </button>
+        </form>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           <div style={{ flex: 1, height: 1, background: "#eef2f6" }} />
@@ -664,7 +672,7 @@ function AuthPage({ onLogin }) {
           )}
         </button>
         <br></br>
-        <p style={{ color: "#94a3b8", fontSize: 11, textAlign: "center", margin: 0, fontWeight: 500 }}>
+        <p style={{ color: "#555b66", fontSize: 11, textAlign: "center", margin: 0, fontWeight: 500 }}>
           Quiet Focus Interface • Secure Data Sync
         </p>
       </div>
@@ -672,16 +680,19 @@ function AuthPage({ onLogin }) {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = "text", hint = "", hintType = "error" }) {
+function Field({ label, value, onChange, placeholder, type = "text", hint = "", hintType = "error", autoComplete = "off" }) {
   const isError = hintType === "error";
+  const fieldId = `field-${label.toLowerCase().replace(/\s+/g, '-')}`;
   return (
     <div style={{ marginBottom: 20 }}>
-      <label style={{ display: "block", color: "#171c1f", fontSize: 10, fontWeight: 800, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>{label}</label>
+      <label htmlFor={fieldId} style={{ display: "block", color: "#171c1f", fontSize: 10, fontWeight: 800, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>{label}</label>
       <input
+        id={fieldId}
         className="auth-input"
         type={type}
         value={value}
         onChange={e => onChange(e.target.value)}
+        autoComplete={autoComplete}
         placeholder={placeholder}
         style={{
           width: "100%",
