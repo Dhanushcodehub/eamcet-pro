@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, onSnapshot } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithPopup, signInWithRedirect } from "firebase/auth";
@@ -167,9 +169,47 @@ const GlobalStyles = () => (
   `}} />
 );
 
+// ─── SEO Component ─────────────────────────────────────────────────────────────
+const SEO = ({ title, description, path = "" }) => {
+  const fullTitle = `${title} | EAMCET Pro`;
+  const url = `https://eamcetpro.vercel.app${path}`;
+  
+  return (
+    <Helmet>
+      <title>{fullTitle}</title>
+      <meta name="description" content={description} />
+      <link rel="canonical" href={url} />
+      <meta property="og:title" content={fullTitle} />
+      <meta property="og:description" content={description} />
+      <meta property="og:url" content={url} />
+      <meta property="twitter:title" content={fullTitle} />
+      <meta property="twitter:description" content={description} />
+      <meta property="twitter:url" content={url} />
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": fullTitle,
+          "description": description,
+          "url": url,
+          "publisher": {
+            "@type": "Organization",
+            "name": "EAMCET Pro",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://eamcetpro.vercel.app/og-image.png"
+            }
+          }
+        })}
+      </script>
+    </Helmet>
+  );
+};
+
 // ─── Root App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPage] = useState("home");
+  const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [activePaper, setActivePaper] = useState(null);
@@ -185,16 +225,21 @@ export default function App() {
           name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
           email: firebaseUser.email,
         });
-        setPage(prev => prev === "home" ? "dashboard" : prev);
+        // Redirect to dashboard if on home or login
+        if (window.location.pathname === "/" || window.location.pathname === "/login") {
+          navigate("/dashboard", { replace: true });
+        }
       } else {
         setUser(null);
         setSessions([]);
-        setPage("home");
+        if (window.location.pathname !== "/") {
+          navigate("/", { replace: true });
+        }
       }
       setBootstrapping(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [navigate]);
 
   // Load user data – first show cached sessions instantly, then refresh from Firestore
   useEffect(() => {
@@ -277,56 +322,77 @@ export default function App() {
     );
   }
 
-  if (!user) return <AuthPage onLogin={u => { setUser(u); setPage("dashboard"); }} />;
-
-  if (page === "exam" && activePaper) {
-    return (
-      <ExamPage
-        paper={activePaper}
-        user={user}
-        onSubmit={(result) => {
-          saveSession({ ...result, date: getTodayStr(), paperId: activePaper.id });
-          setAnalysisData(result);
-          setPage("analysis");
-        }}
-        onExit={() => setPage("dashboard")}
-      />
-    );
-  }
-
-  if (page === "analysis" && analysisData) {
-    return (
-      <AnalysisPage
-        data={analysisData}
-        onBack={() => { setActivePaper(null); setAnalysisData(null); setPage("dashboard"); }}
-      />
-    );
-  }
-
   const handleLogout = async () => {
     if (window._firebaseAuth) await signOut(window._firebaseAuth);
     setUser(null);
-    setPage("home");
+    navigate("/", { replace: true });
   };
 
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/" element={<AuthPage onLogin={u => { setUser(u); navigate("/dashboard"); }} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
+  }
+
   return (
-    <Shell user={user} page={page} setPage={setPage} onLogout={handleLogout}>
-      {page === "dashboard" && (
-        <Dashboard streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { setActivePaper(p); setPage("exam"); }} />
-      )}
-      {page === "papers" && (
-        <PapersPage sessions={sessions} onStart={p => { setActivePaper(p); setPage("exam"); }} />
-      )}
-      {page === "progress" && (
-        <ProgressPage sessions={sessions} streak={streak} accuracy={accuracy} />
-      )}
-      {page === "leaderboard" && <LeaderboardPage user={user} streak={streak} accuracy={accuracy} sessions={sessions} />}
-      {page === "syllabus" && <SyllabusPage />}
-      {/* Fallback: if page is unknown (e.g. "home" on reload), show dashboard */}
-      {!["dashboard", "papers", "progress", "leaderboard", "syllabus"].includes(page) && (
-        <Dashboard streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { setActivePaper(p); setPage("exam"); }} />
-      )}
-    </Shell>
+    <Routes>
+      {/* App Shell Routes */}
+      <Route path="/*" element={<Shell user={user} onLogout={handleLogout}>
+        <Routes>
+          <Route path="dashboard" element={<>
+            <SEO title="Dashboard" description="Your EAMCET Pro dashboard. Track your streak, accuracy, and recent activity." path="/dashboard" />
+            <Dashboard streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { setActivePaper(p); navigate("/exam"); }} />
+          </>} />
+          <Route path="papers" element={<>
+            <SEO title="Practice Papers" description="Access full-length EAMCET practice papers and mock tests." path="/papers" />
+            <PapersPage sessions={sessions} onStart={p => { setActivePaper(p); navigate("/exam"); }} />
+          </>} />
+          <Route path="progress" element={<>
+            <SEO title="My Progress" description="Detailed analysis of your preparation progress and subject-wise accuracy." path="/progress" />
+            <ProgressPage sessions={sessions} streak={streak} accuracy={accuracy} />
+          </>} />
+          <Route path="leaderboard" element={<>
+            <SEO title="Leaderboard" description="See where you stand among thousands of EAMCET aspirants." path="/leaderboard" />
+            <LeaderboardPage user={user} streak={streak} accuracy={accuracy} sessions={sessions} />
+          </>} />
+          <Route path="syllabus" element={<>
+            <SEO title="Syllabus" description="Complete EAMCET syllabus for Physics, Chemistry, Mathematics, and Biology." path="/syllabus" />
+            <SyllabusPage />
+          </>} />
+          {/* Default to dashboard for authenticated users */}
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Shell>} />
+
+      {/* Full-screen Routes */}
+      <Route path="/exam" element={
+        activePaper ? (
+          <ExamPage
+            paper={activePaper}
+            user={user}
+            onSubmit={(result) => {
+              saveSession({ ...result, date: getTodayStr(), paperId: activePaper.id });
+              setAnalysisData(result);
+              navigate("/analysis");
+            }}
+            onExit={() => navigate("/dashboard")}
+          />
+        ) : <Navigate to="/dashboard" replace />
+      } />
+
+      <Route path="/analysis" element={
+        analysisData ? (
+          <AnalysisPage
+            data={analysisData}
+            onBack={() => { setActivePaper(null); setAnalysisData(null); navigate("/dashboard"); }}
+          />
+        ) : <Navigate to="/dashboard" replace />
+      } />
+    </Routes>
   );
 }
 
@@ -640,14 +706,18 @@ function Field({ label, value, onChange, placeholder, type = "text", hint = "", 
 }
 
 // ─── Shell (Navigation) ────────────────────────────────────────────────────────
-function Shell({ user, page, setPage, onLogout, children }) {
+function Shell({ user, onLogout, children }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
-    { id: "papers", label: "Papers", icon: <FileText size={18} /> },
-    { id: "progress", label: "Progress", icon: <TrendingUp size={18} /> },
-    { id: "leaderboard", label: "Leaderboard", icon: <Trophy size={18} /> },
-    { id: "syllabus", label: "Syllabus", icon: <BookOpen size={18} /> },
+    { id: "dashboard", label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={18} /> },
+    { id: "papers", label: "Papers", path: "/papers", icon: <FileText size={18} /> },
+    { id: "progress", label: "Progress", path: "/progress", icon: <TrendingUp size={18} /> },
+    { id: "leaderboard", label: "Leaderboard", path: "/leaderboard", icon: <Trophy size={18} /> },
+    { id: "syllabus", label: "Syllabus", path: "/syllabus", icon: <BookOpen size={18} /> },
   ];
+
+  const currentId = location.pathname.split("/")[1] || "dashboard";
 
   return (
     <div className="app-layout">
@@ -703,11 +773,11 @@ function Shell({ user, page, setPage, onLogout, children }) {
         </div>
         <nav className="nav-list">
           {navItems.map(item => (
-            <button key={item.id} className="nav-btn" onClick={() => setPage(item.id)}
+            <button key={item.id} className="nav-btn" onClick={() => navigate(item.path)}
               style={{
-                background: page === item.id ? "#e2e8f0" : "transparent",
-                color: page === item.id ? "#3b82f6" : "#475569",
-                borderLeft: page === item.id ? "2.5px solid #2563eb" : "2.5px solid transparent"
+                background: currentId === item.id ? "#e2e8f0" : "transparent",
+                color: currentId === item.id ? "#3b82f6" : "#475569",
+                borderLeft: currentId === item.id ? "2.5px solid #2563eb" : "2.5px solid transparent"
               }}>
               <span>{item.icon}</span> {item.label}
             </button>
@@ -1282,8 +1352,8 @@ function PapersPage({ sessions, onStart }) {
 
   return (
     <div>
-      <h2 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Previous Year Papers</h2>
-      <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>Practice official TG EMCET papers from past years</p>
+      <h1 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Previous Year Papers</h1>
+      <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>Practice official TG EAMCET papers from past years</p>
 
       {/* Filter Pills */}
       <div style={{ display: "flex", gap: 7, marginBottom: 20, flexWrap: "wrap" }}>
@@ -2556,7 +2626,7 @@ function ProgressPage({ sessions, streak, accuracy }) {
 
       {/* ── Page Header ── */}
       <div className="pg-fade pg-f1" style={{ marginBottom: 26 }}>
-        <h2 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 24, fontWeight: 700, letterSpacing: -0.4 }}>Your Progress</h2>
+        <h1 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 24, fontWeight: 700, letterSpacing: -0.4 }}>Your Progress</h1>
         <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
           {totalPapers > 0
             ? `${totalPapers} paper${totalPapers !== 1 ? "s" : ""} solved · ${unlockedCount}/${achievements.length} achievements unlocked`
@@ -2876,7 +2946,7 @@ function LeaderboardPage({ user, streak, accuracy, sessions }) {
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h2 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Leaderboard</h2>
+          <h1 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Leaderboard</h1>
           <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>Live rankings from all students</p>
         </div>
         <button onClick={() => setRefreshKey(k => k + 1)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 20, border: "1px solid #f1f5f9", background: "transparent", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.15s" }}>
@@ -3082,7 +3152,7 @@ function SyllabusPage() {
 
       {/* Header */}
       <div className="syl-fade" style={{ marginBottom: 22 }}>
-        <h2 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Syllabus</h2>
+        <h1 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Syllabus</h1>
         <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>Complete TG EAPCET chapter-by-chapter breakdown</p>
       </div>
 

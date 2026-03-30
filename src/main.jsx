@@ -1,10 +1,14 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import { HelmetProvider } from 'react-helmet-async'
 import App from './App.jsx'
 
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, getRedirectResult } from "firebase/auth";
+
+import { Analytics } from "@vercel/analytics/react"
 
 // Firebase Project config
 const firebaseConfig = {
@@ -36,6 +40,11 @@ window._redirectResultPromise = getRedirectResult(window._firebaseAuth)
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <HelmetProvider>
+      <BrowserRouter>
+        <App />
+        <Analytics />
+      </BrowserRouter>
+    </HelmetProvider>
   </React.StrictMode>,
 )
