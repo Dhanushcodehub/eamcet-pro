@@ -10,7 +10,7 @@ import { LayoutDashboard, FileText, TrendingUp, Trophy, BookOpen, Flame, CheckCi
 
 // ─── Mock Data ─────────────────────────────────────────────────────────────────
 export const SUBJECTS = ["Physics", "Chemistry", "Mathematics", "Biology"];
-import { QUESTION_BANK, PAPER_SETS } from "./data/papers.js";
+import { QUESTION_BANK, PAPER_SETS } from "./data/index.js";
 
 // ─── Firebase SDK Initialized above ───────────────────────────────────────────
 //
@@ -105,7 +105,8 @@ function calcAccuracy(sessions) {
 
 // --- CSS STYLES ---
 const GlobalStyles = () => (
-  <style dangerouslySetInnerHTML={{ __html: `
+  <style dangerouslySetInnerHTML={{
+    __html: `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;600;700&display=swap');
     
     .auth-container { 
@@ -173,7 +174,7 @@ const GlobalStyles = () => (
 const SEO = ({ title, description, path = "" }) => {
   const fullTitle = `${title} | EAMCET Pro`;
   const url = `https://eamcetpro.vercel.app${path}`;
-  
+
   return (
     <Helmet>
       <title>{fullTitle}</title>
@@ -1590,9 +1591,8 @@ function PapersPage({ sessions, onStart }) {
 
 // ─── Exam Page ─────────────────────────────────────────────────────────────────
 function ExamPage({ paper, onSubmit, onExit }) {
-  const year = paper.year;
   const allQs = paper.subjects.flatMap(subj =>
-    (QUESTION_BANK[year]?.[subj] || []).map(q => ({ ...q, subject: subj }))
+    (QUESTION_BANK[paper.id]?.[subj] || []).map(q => ({ ...q, subject: subj }))
   );
   const [answers, setAnswers] = useState({});
   const [current, setCurrent] = useState(0);
@@ -3228,16 +3228,16 @@ function NotFound() {
       <p style={{ color: "#64748b", maxWidth: 400, marginBottom: 32, lineHeight: 1.6 }}>
         The link might be broken, or the page may have been moved. Let's get you back on track.
       </p>
-      <button 
+      <button
         onClick={() => navigate("/dashboard")}
-        style={{ 
-          padding: "12px 28px", 
-          background: "#2563eb", 
-          color: "#ffffff", 
-          borderRadius: 12, 
-          border: "none", 
-          fontWeight: 700, 
-          cursor: "pointer", 
+        style={{
+          padding: "12px 28px",
+          background: "#2563eb",
+          color: "#ffffff",
+          borderRadius: 12,
+          border: "none",
+          fontWeight: 700,
+          cursor: "pointer",
           boxShadow: "0 10px 15px -3px rgba(37,99,235,0.25)",
           fontFamily: "'Sora', sans-serif",
           transition: "transform 0.1s"
