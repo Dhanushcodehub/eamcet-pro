@@ -1594,6 +1594,22 @@ function ExamPage({ paper, onSubmit, onExit }) {
   const allQs = paper.subjects.flatMap(subj =>
     (QUESTION_BANK[paper.id]?.[subj] || []).map(q => ({ ...q, subject: subj }))
   );
+
+  // ── Guard: no questions for this paper yet ──────────────
+  if (allQs.length === 0) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 32, textAlign: "center" }}>
+        <div style={{ fontSize: 48 }}>📄</div>
+        <h2 style={{ margin: 0, color: "#0f172a", fontSize: 22, fontWeight: 700 }}>Questions Coming Soon</h2>
+        <p style={{ margin: 0, color: "#64748b", fontSize: 14, maxWidth: 380, lineHeight: 1.6 }}>
+          The question set for <strong>{paper.label}</strong> hasn't been added yet. Check back later!
+        </p>
+        <button onClick={onExit} style={{ marginTop: 8, padding: "10px 28px", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", border: "none", borderRadius: 10, color: "#ffffff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
+          ← Back to Papers
+        </button>
+      </div>
+    );
+  }
   const [answers, setAnswers] = useState({});
   const [current, setCurrent] = useState(0);
   const [timeLeft, setTimeLeft] = useState(paper.duration * 60);
