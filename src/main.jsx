@@ -26,10 +26,6 @@ const app = initializeApp(firebaseConfig);
 window._firebaseDb = getFirestore(app);
 window._firebaseAuth = getAuth(app);
 
-// ⚡ Start processing the Google redirect result IMMEDIATELY (before React mounts).
-// This races ahead of onAuthStateChanged so auth state is ready when App renders.
-window._redirectResultPromise = getRedirectResult(window._firebaseAuth);
-
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HelmetProvider>

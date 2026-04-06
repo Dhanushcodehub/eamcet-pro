@@ -35,7 +35,9 @@ export default function App() {
 
   // ── Auth persistence listener ─────────────────────────────────────────────
   useEffect(() => {
+    console.log("[App] onAuthStateChanged active. Path:", window.location.pathname);
     const unsubscribe = onAuthStateChanged(window._firebaseAuth, (firebaseUser) => {
+      console.log("[App] onAuthStateChanged fired. User:", firebaseUser ? firebaseUser.email : "null");
       if (firebaseUser) {
         setUser({
           uid:   firebaseUser.uid,
@@ -43,12 +45,15 @@ export default function App() {
           email: firebaseUser.email,
         });
         if (window.location.pathname === "/" || window.location.pathname === "/login") {
+          console.log("[App] Logged in, redirecting to /dashboard");
           navigate("/dashboard", { replace: true });
         }
       } else {
+        console.log("[App] No user found.");
         setUser(null);
         setSessions([]);
         if (window.location.pathname !== "/" && window.location.pathname !== "/login") {
+          console.log("[App] Unauthenticated on protected route, redirecting to /");
           navigate("/", { replace: true });
         }
       }

@@ -18,55 +18,6 @@ function AuthPage({ onLogin }) {
   const [pwd, setPwd] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [processingRedirect, setProcessingRedirect] = useState(
-    !!window._redirectResultPromise
-  );
-
-  // Handle Google redirect result
-  useEffect(() => {
-    const pending = window._redirectResultPromise;
-    if (!pending) return;
-    window._redirectResultPromise = null;
-
-    pending
-      .then((result) => {
-        if (result?.user) {
-          const u = result.user;
-          onLogin({
-            uid: u.uid,
-            name: u.displayName || u.email?.split("@")[0] || "User",
-            email: u.email,
-          });
-        } else {
-          setProcessingRedirect(false);
-        }
-      })
-      .catch((e) => {
-        console.error("[getRedirectResult error]", e.code, e.message);
-        const msgs = {
-          "auth/operation-not-allowed": "Google Sign-In is not enabled. Go to Firebase Console → Authentication → Sign-in method → Google → Enable.",
-          "auth/unauthorized-domain": `Domain '${window.location.hostname}' not authorized. Add it in Firebase Console → Authentication → Settings → Authorized Domains.`,
-          "auth/account-exists-with-different-credential": "An account already exists with this email using a different sign-in method.",
-        };
-        if (e.code) {
-          setErr(msgs[e.code] || `Error [${e.code}]: ${e.message}`);
-        } else {
-          setErr(`Google Sign-In failed: ${e.message}. If using localhost, your browser may be blocking 3rd-party cookies.`);
-        }
-        setProcessingRedirect(false);
-      });
-  }, []);
-
-  if (processingRedirect) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f8faff", fontFamily: "'Sora', sans-serif", gap: 16 }}>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <div style={{ width: 44, height: 44, border: "3px solid #e2e8f0", borderTop: "3px solid #2563eb", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-        <p style={{ color: "#475569", fontSize: 14, fontWeight: 500, margin: 0 }}>Completing Google sign-in…</p>
-        <p style={{ color: "#94a3b8", fontSize: 12, margin: 0 }}>Please wait</p>
-      </div>
-    );
-  }
 
   const handle = async () => {
     if (!email || !pwd) { setErr("Please fill all fields"); return; }
@@ -117,7 +68,20 @@ function AuthPage({ onLogin }) {
       if (window._firebaseAuth) {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
-        await signInWithRedirect(window._firebaseAuth, provider);
+        try {
+          const cred = await signInWithPopup(window._firebaseAuth, provider);
+          onLogin({
+            uid: cred.user.uid,
+            name: cred.user.displayName || cred.user.email?.split("@")[0] || "User",
+            email: cred.user.email,
+          });
+        } catch (popupErr) {
+          if (popupErr.code === "auth/popup-blocked" || popupErr.code === "auth/popup-closed-by-user") {
+            setErr("Google pop-up was blocked or closed. Please allow pop-ups for this site or try again.");
+          } else {
+            throw popupErr;
+          }
+        }
       } else {
         await new Promise(r => setTimeout(r, 900));
         onLogin({ uid: "mock_google_id", name: "Google User", email: "google@example.com" });
