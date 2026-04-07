@@ -81,8 +81,23 @@ export default function LandingPage() {
     .hero-bg { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #f8fafc; background-image: linear-gradient(rgba(37,99,235,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(37,99,235,0.06) 1px, transparent 1px); background-size: 32px 32px; z-index: -1; }
     .hero-glow { position: absolute; width: 600px; height: 600px; background: radial-gradient(circle, rgba(37,99,235,0.15) 0%, rgba(255,255,255,0) 70%); top: -100px; right: -100px; border-radius: 50%; filter: blur(40px); z-index: -1; }
     
-    .hero-layout { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 60px; width: 100%; position: relative; z-index: 10; }
-    .hero-content { flex: 1; min-width: 45%; max-width: 580px; text-align: left; position: relative; }
+    .hero-layout { 
+      max-width: 1400px; 
+      margin: 0 auto; 
+      display: grid; 
+      grid-template-columns: repeat(12, 1fr); 
+      align-items: center; 
+      gap: 60px; 
+      width: 100%; 
+      position: relative; 
+      z-index: 10; 
+    }
+    .hero-content { 
+      grid-column: 2 / span 5;
+      max-width: 580px; 
+      text-align: left; 
+      position: relative; 
+    }
     .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(37,99,235,0.1); color: #2563eb; font-weight: 600; font-size: 14px; padding: 6px 16px; border-radius: 99px; margin-bottom: 24px; border: 1px solid rgba(37,99,235,0.2); }
     .hero h1 { font-size: clamp(40px, 4.5vw, 72px); letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 24px; color: #0f172a; }
     .hero h1 span { background: linear-gradient(135deg, #2563eb, #1e40af); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
@@ -95,7 +110,13 @@ export default function LandingPage() {
     .stat-label { font-size: 13px; color: #64748b; font-weight: 500; }
 
     /* Dashboard Mockup */
-    .mockup-container { flex: 1.4; width: 100%; min-width: 50%; perspective: 1000px; display: flex; justify-content: flex-end; }
+    .mockup-container { 
+      grid-column: 7 / span 5;
+      width: 100%; 
+      perspective: 1000px; 
+      display: flex; 
+      justify-content: flex-end; 
+    }
     .mockup-window { background: #ffffff; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(37,99,235,0.25); border: 1px solid rgba(226,232,240,0.8); overflow: hidden; position: relative; width: 100%; max-width: 800px; margin: 0 auto; }
     .mockup-header { height: 40px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 16px; gap: 6px; }
     .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
@@ -155,12 +176,34 @@ export default function LandingPage() {
     .footer-bottom { border-top: 1px solid #1e293b; padding-top: 24px; display: flex; justify-content: space-between; max-width: 1200px; margin: 0 auto; font-size: 14px; }
 
     @media (max-width: 1024px) {
-      .hero-layout { flex-direction: column; text-align: center; justify-content: center; padding-top: 40px; }
-      .hero-content { text-align: center; max-width: 800px; }
+      .hero-layout { 
+        grid-template-columns: 1fr; 
+        text-align: center; 
+        justify-content: center; 
+        padding-top: 40px; 
+        gap: 60px;
+      }
+      .hero-content { 
+        grid-column: 1 / -1;
+        text-align: center; 
+        max-width: 800px; 
+        margin: 0 auto;
+      }
+      .hero h1 { font-size: 48px; }
       .hero p { margin-inline: auto; text-align: center; }
       .hero-buttons { justify-content: center; }
-      .stats-row { justify-content: center; }
-      .mockup-container { width: 100%; max-width: 800px; margin-top: 40px; justify-content: center; margin-inline: auto; }
+      .hero-checklist { align-items: center; }
+      
+      .mockup-container { 
+        grid-column: 1 / -1;
+        width: 100%; 
+        max-width: 600px; 
+        justify-content: center; 
+        margin: 0 auto; 
+      }
+      .floating-card {
+        left: 20px;
+      }
     }
     @media (max-width: 768px) {
       .nav-links { display: none; }
@@ -287,13 +330,11 @@ export default function LandingPage() {
             </motion.div>
           </motion.div>
 
-          {/* Dashboard Mockup */}
           <motion.div 
             className="mockup-container"
-            initial={{ opacity: 0, y: 100 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 1, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            style={{ y: y2 }}
           >
             <div className="mockup-window">
               <div className="mockup-header">
@@ -304,56 +345,39 @@ export default function LandingPage() {
                   <Shield size={12} /> app.eamcetpro.com
                 </div>
               </div>
-              <div className="mockup-inner" style={{ display: 'flex', background: '#f8faff', height: '100%' }}>
-                {/* Fake Sidebar */}
-                <div className="mockup-sidebar" style={{ width: 200, borderRight: '1px solid #e2e8f0', padding: 24, background: 'white', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: '#2563eb' }} />
-                    <div style={{ height: 18, width: 90, background: '#0f172a', borderRadius: 4 }} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', background: '#e0e7ff', borderRadius: 8 }}>
-                    <LayoutDashboard size={16} color="#2563eb" />
-                    <div style={{ height: 12, width: 80, background: '#2563eb', borderRadius: 4 }} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px' }}>
-                    <Target size={16} color="#64748b" />
-                    <div style={{ height: 12, width: 70, background: '#e2e8f0', borderRadius: 4 }} />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px' }}>
-                    <BookOpen size={16} color="#64748b" />
-                    <div style={{ height: 12, width: 90, background: '#e2e8f0', borderRadius: 4 }} />
-                  </div>
-                </div>
-                {/* Fake Content */}
-                <div className="mockup-content" style={{ flex: 1, padding: 32 }}>
-                  <div style={{ marginBottom: 24 }}>
+              <div className="mockup-inner" style={{ background: '#f8faff', height: '100%', minHeight: 480 }}>
+                {/* Fake Content - Fully Contained */}
+                <div className="mockup-content" style={{ flex: 1, padding: '32px 40px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  <div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Welcome back, Student! 👋</div>
                     <div style={{ fontSize: 14, color: '#64748b' }}>Your target is JNTUH - CSE. You're on track!</div>
                   </div>
-                  <div className="mockup-stats-row" style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
+                  
+                  <div className="mockup-stats-row" style={{ display: 'flex', gap: 20 }}>
                     <div style={{ flex: 1, background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <div style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>Mock Tests</div>
+                        <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Mock Tests</div>
                         <div style={{ width: 32, height: 32, background: '#f0f7ff', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <BookOpen size={16} color="#2563eb" />
                         </div>
                       </div>
-                      <div style={{ fontSize: 28, fontWeight: 700, color: '#0f172a' }}>12</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a' }}>12</div>
                     </div>
                     <div style={{ flex: 1, background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <div style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>Avg. Accuracy</div>
+                        <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Avg. Accuracy</div>
                         <div style={{ width: 32, height: 32, background: '#ecfdf5', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <Target size={16} color="#10b981" />
                         </div>
                       </div>
-                      <div style={{ fontSize: 28, fontWeight: 700, color: '#0f172a' }}>84%</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a' }}>84%</div>
                     </div>
                   </div>
-                  <div style={{ width: '100%', background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 20 }}>Recent Performance</div>
+
+                  <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: '24px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 16 }}>Recent Performance</div>
                     {/* Fake Chart */}
-                    <div style={{ display: 'flex', alignItems: 'flex-end', height: 120, gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', height: 110, gap: 12 }}>
                       {[40, 70, 45, 90, 60, 100, 80].map((h, i) => (
                         <div key={i} style={{ flex: 1, height: `${h}%`, background: h === 100 ? '#2563eb' : (h > 60 ? '#60a5fa' : '#bfdbfe'), borderRadius: '6px 6px 0 0' }} />
                       ))}
@@ -361,7 +385,6 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40%', background: 'linear-gradient(to top, rgba(255,255,255,1), rgba(255,255,255,0))', pointerEvents: 'none' }} />
             </div>
           </motion.div>
         </div>
