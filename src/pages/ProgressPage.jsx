@@ -3,7 +3,7 @@ import {
   Target, Award, Trophy, Zap, Atom, FlaskConical, Compass,
 } from "lucide-react";
 
-function ProgressPage({ sessions, streak, accuracy }) {
+function ProgressPage({ user, sessions, streak, accuracy, onRequireAuth }) {
   // ── Weekly data (last 7 days) ───────────────────────────────────────────────
   const weekly = [];
   for (let i = 6; i >= 0; i--) {
@@ -55,7 +55,49 @@ function ProgressPage({ sessions, streak, accuracy }) {
   const unlockedCount = achievements.filter(a => a.unlocked).length;
 
   return (
-    <div>
+    <div style={{ position: "relative", ...(user ? { minHeight: "80vh" } : { height: "calc(100vh - 100px)", overflow: "hidden" }) }}>
+      {!user && (
+        <div style={{
+          position: "absolute", inset: -16, zIndex: 10,
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
+          backgroundColor: "rgba(248, 250, 255, 0.5)",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          borderRadius: 24,
+        }}>
+          <div style={{
+            background: "#ffffff", padding: "36px", borderRadius: "24px",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.08)", textAlign: "center", maxWidth: "400px",
+            border: "1px solid rgba(37,99,235,0.1)",
+            animation: "pgFadeUp 0.4s ease forwards"
+          }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #10b981, #059669)", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <TrendingUp size={28} />
+            </div>
+            <h2 style={{ fontSize: "22px", fontWeight: "700", color: "#0f172a", marginBottom: "12px", fontFamily: "'Sora', sans-serif" }}>
+              Unlock Your Insights
+            </h2>
+            <p style={{ color: "#64748b", fontSize: "14px", lineHeight: "1.6", marginBottom: "32px", fontFamily: "'Sora', sans-serif" }}>
+              Sign in to see your personalized weekly activity, subject accuracy charts, and track your achievements.
+            </p>
+            <button 
+              onClick={onRequireAuth}
+              style={{
+                width: "100%", padding: "14px", borderRadius: "12px", border: "none",
+                background: "#2563eb", color: "#ffffff", fontSize: "15px", fontWeight: "600",
+                fontFamily: "'Sora', sans-serif", cursor: "pointer", transition: "background 0.2s"
+              }}
+              onMouseOver={e => e.currentTarget.style.background = '#1d4ed8'}
+              onMouseOut={e => e.currentTarget.style.background = '#2563eb'}
+            >
+              Sign In to View Progress
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ filter: !user ? "blur(3px)" : "none", pointerEvents: !user ? "none" : "auto", userSelect: !user ? "none" : "auto", opacity: !user ? 0.7 : 1, transition: "filter 0.3s, opacity 0.3s" }}>
       <style>{`
         @keyframes pgFadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
         .pg-fade   { animation: pgFadeUp 0.38s ease both; }
@@ -306,6 +348,7 @@ function ProgressPage({ sessions, streak, accuracy }) {
           ))}
         </div>
       </div>
+    </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import SEO from "./components/SEO.jsx";
 
 // ── Pages ────────────────────────────────────────────────────────────────────────
 import LandingPage from "./pages/LandingPage.jsx";
+import AuthPopup from "./components/AuthPopup.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import PapersPage from "./pages/PapersPage.jsx";
@@ -22,6 +23,7 @@ import LeaderboardPage from "./pages/LeaderboardPage.jsx";
 import SyllabusPage from "./pages/SyllabusPage.jsx";
 import FlashcardsPage from "./pages/FlashcardsPage.jsx";
 import PredictorPage from "./pages/PredictorPage.jsx";
+import VerifyPage from "./pages/VerifyPage.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 // ─── Root App ──────────────────────────────────────────────────────────────────
@@ -32,6 +34,9 @@ export default function App() {
   const [activePaper, setActivePaper] = useState(null);
   const [analysisData, setAnalysisData] = useState(null);
   const [sessions, setSessions]       = useState([]);
+  const [showAuthPopup, setShowAuthPopup] = useState(false);
+
+  const handleRequireAuth = () => setShowAuthPopup(true);
 
   // ── Auth persistence listener ─────────────────────────────────────────────
   useEffect(() => {
@@ -43,19 +48,25 @@ export default function App() {
           uid:   firebaseUser.uid,
           name:  firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
           email: firebaseUser.email,
+          emailVerified: firebaseUser.emailVerified,
         });
+
+        const isPasswordProvider = firebaseUser.providerData?.some(p => p.providerId === 'password');
+        const needsVerification = isPasswordProvider && !firebaseUser.emailVerified;
+
         if (window.location.pathname === "/" || window.location.pathname === "/login") {
-          console.log("[App] Logged in, redirecting to /dashboard");
-          navigate("/dashboard", { replace: true });
+          if (needsVerification) {
+            console.log("[App] User needs verification. Staying on Auth/Login.");
+            if (window.location.pathname !== "/login") navigate("/login");
+          } else {
+            console.log("[App] Logged in & verified, redirecting to /dashboard");
+            navigate("/dashboard", { replace: true });
+          }
         }
       } else {
         console.log("[App] No user found.");
         setUser(null);
         setSessions([]);
-        if (window.location.pathname !== "/" && window.location.pathname !== "/login") {
-          console.log("[App] Unauthenticated on protected route, redirecting to /");
-          navigate("/", { replace: true });
-        }
       }
       setBootstrapping(false);
     });
@@ -124,89 +135,94 @@ export default function App() {
     );
   }
 
-  // ── Unauthenticated ───────────────────────────────────────────────────────────
-  if (!user) {
-    return (
+  // ── Main App Render ─────────────────────────────────────────────────────────
+  return (
+    <>
+      <AuthPopup 
+        isOpen={showAuthPopup} 
+        onClose={() => setShowAuthPopup(false)} 
+        onLogin={() => {
+          setShowAuthPopup(false);
+          navigate("/login");
+        }} 
+      />
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<AuthPage onLogin={u => { setUser(u); navigate("/dashboard"); }} />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/login" element={<AuthPage user={user} onLogin={u => { setUser(u); navigate("/dashboard"); }} />} />
+        <Route path="/verify" element={<VerifyPage onVerified={(u) => { setUser(u); navigate("/dashboard"); }} />} />
+        
+        {/* Shell-wrapped routes */}
+        <Route path="/*" element={
+          (user && !user.emailVerified) ? <Navigate to="/login" replace /> : (
+            <Shell user={user} onLogout={handleLogout}>
+            <Routes>
+              <Route path="dashboard" element={<>
+                <SEO title="Dashboard" description="Your EAMCET Pro dashboard. Track your streak, accuracy, and recent activity." path="/dashboard" />
+                <Dashboard user={user} streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { if(!user) { handleRequireAuth(); return; } setActivePaper(p); navigate("/exam"); }} onRequireAuth={handleRequireAuth} />
+              </>} />
+
+              <Route path="papers" element={<>
+                <SEO title="Practice Papers" description="Access full-length EAMCET practice papers and mock tests." path="/papers" />
+                <PapersPage sessions={sessions} onStart={p => { if(!user) { handleRequireAuth(); return; } setActivePaper(p); navigate("/exam"); }} />
+              </>} />
+
+              <Route path="progress" element={<>
+                <SEO title="My Progress" description="Detailed analysis of your preparation progress and subject-wise accuracy." path="/progress" />
+                <ProgressPage user={user} sessions={sessions} streak={streak} accuracy={accuracy} onRequireAuth={handleRequireAuth} />
+              </>} />
+
+              <Route path="flashcards" element={<>
+                <SEO title="Flashcards" description="Study EAMCET concepts with smart flashcards for Physics, Chemistry, and Mathematics." path="/flashcards" />
+                <FlashcardsPage />
+              </>} />
+
+              <Route path="leaderboard" element={<>
+                <SEO title="Leaderboard" description="See where you stand among thousands of EAMCET aspirants." path="/leaderboard" />
+                <LeaderboardPage user={user} streak={streak} accuracy={accuracy} sessions={sessions} />
+              </>} />
+
+              <Route path="syllabus" element={<>
+                <SEO title="Syllabus" description="Complete EAMCET syllabus for Physics, Chemistry, Mathematics, and Biology." path="/syllabus" />
+                <SyllabusPage />
+              </>} />
+
+              <Route path="predictor" element={<>
+                <SEO title="College Predictor" description="EAMCET rank and college predictor tool based on normalized 2024 trends." path="/predictor" />
+                <PredictorPage />
+              </>} />
+
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Shell>
+          )
+        } />
+
+        {/* Full-screen exam route */}
+        <Route path="/exam" element={
+          activePaper && user ? (
+            <ExamPage
+              paper={activePaper}
+              onSubmit={(result) => {
+                saveSession({ ...result, date: getTodayStr(), paperId: activePaper.id, paperLabel: activePaper.label });
+                setAnalysisData(result);
+                navigate("/analysis");
+              }}
+              onExit={() => navigate("/dashboard")}
+            />
+          ) : <Navigate to="/dashboard" replace />
+        } />
+
+        {/* Full-screen analysis route */}
+        <Route path="/analysis" element={
+          analysisData && user ? (
+            <AnalysisPage
+              data={analysisData}
+              onBack={() => { setActivePaper(null); setAnalysisData(null); navigate("/papers"); }}
+            />
+          ) : <Navigate to="/dashboard" replace />
+        } />
       </Routes>
-    );
-  }
-
-  // ── Authenticated ─────────────────────────────────────────────────────────────
-  return (
-    <Routes>
-      {/* Shell-wrapped routes */}
-      <Route path="/*" element={
-        <Shell user={user} onLogout={handleLogout}>
-          <Routes>
-            <Route path="dashboard" element={<>
-              <SEO title="Dashboard" description="Your EAMCET Pro dashboard. Track your streak, accuracy, and recent activity." path="/dashboard" />
-              <Dashboard streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { setActivePaper(p); navigate("/exam"); }} />
-            </>} />
-
-            <Route path="papers" element={<>
-              <SEO title="Practice Papers" description="Access full-length EAMCET practice papers and mock tests." path="/papers" />
-              <PapersPage sessions={sessions} onStart={p => { setActivePaper(p); navigate("/exam"); }} />
-            </>} />
-
-            <Route path="progress" element={<>
-              <SEO title="My Progress" description="Detailed analysis of your preparation progress and subject-wise accuracy." path="/progress" />
-              <ProgressPage sessions={sessions} streak={streak} accuracy={accuracy} />
-            </>} />
-
-            <Route path="flashcards" element={<>
-              <SEO title="Flashcards" description="Study EAMCET concepts with smart flashcards for Physics, Chemistry, and Mathematics." path="/flashcards" />
-              <FlashcardsPage />
-            </>} />
-
-            <Route path="leaderboard" element={<>
-              <SEO title="Leaderboard" description="See where you stand among thousands of EAMCET aspirants." path="/leaderboard" />
-              <LeaderboardPage user={user} streak={streak} accuracy={accuracy} sessions={sessions} />
-            </>} />
-
-            <Route path="syllabus" element={<>
-              <SEO title="Syllabus" description="Complete EAMCET syllabus for Physics, Chemistry, Mathematics, and Biology." path="/syllabus" />
-              <SyllabusPage />
-            </>} />
-
-            <Route path="predictor" element={<>
-              <SEO title="College Predictor" description="EAMCET rank and college predictor tool based on normalized 2024 trends." path="/predictor" />
-              <PredictorPage />
-            </>} />
-
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Shell>
-      } />
-
-      {/* Full-screen exam route */}
-      <Route path="/exam" element={
-        activePaper ? (
-          <ExamPage
-            paper={activePaper}
-            onSubmit={(result) => {
-              saveSession({ ...result, date: getTodayStr(), paperId: activePaper.id, paperLabel: activePaper.label });
-              setAnalysisData(result);
-              navigate("/analysis");
-            }}
-            onExit={() => navigate("/dashboard")}
-          />
-        ) : <Navigate to="/dashboard" replace />
-      } />
-
-      {/* Full-screen analysis route */}
-      <Route path="/analysis" element={
-        analysisData ? (
-          <AnalysisPage
-            data={analysisData}
-            onBack={() => { setActivePaper(null); setAnalysisData(null); navigate("/papers"); }}
-          />
-        ) : <Navigate to="/dashboard" replace />
-      } />
-    </Routes>
+    </>
   );
 }

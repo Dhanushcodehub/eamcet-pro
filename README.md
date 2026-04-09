@@ -2,7 +2,7 @@
 
 > A modern, full-featured exam preparation platform for EAMCET (Engineering, Agriculture and Medical Common Entrance Test) aspirants — built with React, Vite, and Firebase.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-eamcetpro.vercel.app-blue?style=for-the-badge&logo=vercel)](https://eamcetpro.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-eamcetpro.vercel.app-blue?style=for-the-badge)](https://eamcetpro.vercel.app)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?style=for-the-badge&logo=react)](https://reactjs.org/)
 [![Firebase](https://img.shields.io/badge/Firebase-10.12-FFCA28?style=for-the-badge&logo=firebase)](https://firebase.google.com/)
 [![Vite](https://img.shields.io/badge/Vite-5.2-646CFF?style=for-the-badge&logo=vite)](https://vitejs.dev/)
@@ -127,10 +127,12 @@ eamcet-pro/
 
 ## 🌐 Deployment
 
-This project is deployed on **Vercel**. To deploy your own instance:
+The official version of **EAMCET Pro** is hosted at [eamcetpro.vercel.app](https://eamcetpro.vercel.app).
+
+To deploy your own instance:
 
 1. Push your code to GitHub.
-2. Import the repository in [Vercel](https://vercel.com/).
+2. Import the repository into your preferred hosting provider (e.g., Vercel, Netlify).
 3. Add your Firebase environment variables under **Project Settings → Environment Variables**.
 4. Deploy!
 
