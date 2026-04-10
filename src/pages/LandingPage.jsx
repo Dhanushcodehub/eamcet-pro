@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { Helmet } from 'react-helmet-async';
-import { 
-  ArrowRight, CheckCircle2, BarChart3, Target, 
-  BookOpen, Trophy, Zap, BrainCircuit, 
+import {
+  ArrowRight, CheckCircle2, BarChart3, Target,
+  BookOpen, Trophy, Zap, BrainCircuit,
   LayoutDashboard, Layers, Star, Menu, X, Rocket, GraduationCap, Shield
 } from 'lucide-react';
 
@@ -12,7 +12,7 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
+
   const { scrollY } = useScroll();
   const y1 = useTransform(scrollY, [0, 1000], [0, 200]);
   const y2 = useTransform(scrollY, [0, 1000], [0, -100]);
@@ -245,7 +245,7 @@ export default function LandingPage() {
           <div className="nav-links">
             <a href="#features" className="nav-link">Features</a>
             <a href="#how-it-works" className="nav-link">How it Works</a>
-            <a href="#predictor" className="nav-link">Rank Predictor</a>
+            <a href="/predictor" className="nav-link">Rank Predictor</a>
             <Link to="/login" className="btn btn-outline" style={{ marginLeft: 16, padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Sign In</Link>
             <Link to="/login" className="btn btn-primary" style={{ padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Get Started</Link>
           </div>
@@ -259,15 +259,15 @@ export default function LandingPage() {
       {/* Mobile Menu */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }} 
-            animate={{ opacity: 1, scale: 1 }} 
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.98)', zIndex: 200, display: 'flex', flexDirection: 'column', padding: 24 }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 60 }}>
               <span className="sora-font" style={{ fontSize: 24, fontWeight: 700 }}>EAMCET<span style={{ color: '#2563eb' }}>Pro</span></span>
-              <button onClick={() => setMobileMenuOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={32}/></button>
+              <button onClick={() => setMobileMenuOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={32} /></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24, fontSize: 24, fontWeight: 600 }}>
               <a href="#features" onClick={() => setMobileMenuOpen(false)} style={{ color: '#0f172a', textDecoration: 'none' }}>Features</a>
@@ -286,9 +286,9 @@ export default function LandingPage() {
       <section className="hero">
         <div className="hero-bg" />
         <div className="hero-glow" />
-        
+
         <div className="hero-layout">
-          <motion.div 
+          <motion.div
             className="hero-content"
             initial="hidden" animate="visible" variants={staggerContainer}
           >
@@ -296,7 +296,7 @@ export default function LandingPage() {
               <Star size={16} fill="#2563eb" /> New: 2024 Exam Data Integrated
             </motion.div>
             <motion.h1 variants={fadeInUp}>
-              Crack EAMCET with <br/><span>Smart Preparation 🚀</span>
+              Crack EAMCET with <br /><span>Smart Preparation 🚀</span>
             </motion.h1>
             <motion.p variants={fadeInUp}>
               Practice PYQs, take real-time mock tests, analyze performance, and predict your rank & college — all in one modern platform.
@@ -311,17 +311,17 @@ export default function LandingPage() {
                 </button>
               </a>
             </motion.div>
-            
+
             <motion.div variants={fadeInUp} className="stats-row">
               <div className="stat-item">
-                <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}><GraduationCap size={24}/></div>
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}><GraduationCap size={24} /></div>
                 <div>
                   <div className="stat-val">10,000+</div>
                   <div className="stat-label">Students Active</div>
                 </div>
               </div>
               <div className="stat-item">
-                <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}><CheckCircle2 size={24}/></div>
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}><CheckCircle2 size={24} /></div>
                 <div>
                   <div className="stat-val">1M+</div>
                   <div className="stat-label">Questions Practiced</div>
@@ -330,7 +330,7 @@ export default function LandingPage() {
             </motion.div>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             className="mockup-container"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -352,7 +352,7 @@ export default function LandingPage() {
                     <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Welcome back, Student! 👋</div>
                     <div style={{ fontSize: 14, color: '#64748b' }}>Your target is JNTUH - CSE. You're on track!</div>
                   </div>
-                  
+
                   <div className="mockup-stats-row" style={{ display: 'flex', gap: 20 }}>
                     <div style={{ flex: 1, background: 'white', border: '1px solid #e2e8f0', borderRadius: 16, padding: 20, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -394,7 +394,7 @@ export default function LandingPage() {
       <section id="features" className="section section-bg-gray">
         <h2>Unfair Advantage for Your Prep</h2>
         <p className="subtitle">Everything you need to master the TS EAMCET syllabus, packed into a blazing-fast dashboard.</p>
-        
+
         <div className="features-grid">
           {[
             { icon: <BookOpen />, title: "Real PYQ Practice", desc: "Access official previous year question papers mapped to exact exam formats." },
@@ -404,8 +404,8 @@ export default function LandingPage() {
             { icon: <Rocket />, title: "Rank Predictor", desc: "Proprietary algorithm based on official 2024 allotment data." },
             { icon: <Trophy />, title: "Global Leaderboard", desc: "Compete with thousands of aspirants and maintain your daily study streak." },
           ].map((feat, idx) => (
-            <motion.div 
-              key={idx} 
+            <motion.div
+              key={idx}
               className="feature-card"
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -424,7 +424,7 @@ export default function LandingPage() {
       <section id="how-it-works" className="section">
         <h2>Four Steps to Success</h2>
         <p className="subtitle">A proven methodology to boost your rank from zero to top tier.</p>
-        
+
         <div className="steps-container">
           {[
             { title: "Sign Up & Set Target", desc: "Create your free account and set your target college and branch." },
@@ -432,7 +432,7 @@ export default function LandingPage() {
             { title: "Analyze Weaknesses", desc: "Our engine highlights exact topics where you lose marks or spend too much time." },
             { title: "Predict & Improve", desc: "Use the Rank Predictor to see where you stand, study weak areas, and repeat." },
           ].map((step, idx) => (
-            <motion.div 
+            <motion.div
               className="step-item" key={idx}
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
@@ -454,14 +454,14 @@ export default function LandingPage() {
       <section className="section section-bg-gray" style={{ overflow: 'hidden' }}>
         <div className="nav-container">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 60, alignItems: 'center' }}>
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
               style={{ flex: '1 1 400px' }}
             >
               <div style={{ display: 'inline-flex', padding: '6px 12px', background: '#fef3c7', color: '#d97706', borderRadius: 8, fontWeight: 600, fontSize: 13, marginBottom: 20 }}>
                 #1 Feature
               </div>
-              <h2 style={{ textAlign: 'left', marginBottom: 24, fontSize: 'clamp(32px, 4vw, 42px)' }}>Don't just test.<br/>Analyze deep.</h2>
+              <h2 style={{ textAlign: 'left', marginBottom: 24, fontSize: 'clamp(32px, 4vw, 42px)' }}>Don't just test.<br />Analyze deep.</h2>
               <p style={{ color: '#64748b', fontSize: 18, lineHeight: 1.6, marginBottom: 32 }}>
                 Traditional tests just give you a score. EAMCET Pro breaks down your performance by subject, tracks your speed, and maps out your exact accuracy over time. Stop studying blind.
               </p>
@@ -473,19 +473,19 @@ export default function LandingPage() {
                 ))}
               </ul>
             </motion.div>
-            
-            <motion.div 
+
+            <motion.div
               style={{ flex: '1 1 500px', position: 'relative' }}
               initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} transition={{ duration: 0.6 }}
             >
               <div style={{ background: 'white', borderRadius: 24, padding: 32, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center' }}>
                   <div style={{ fontSize: 18, fontWeight: 600 }}>Performance</div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb' }}>86% <span style={{fontSize: 14, color: '#10b981', fontWeight: 500}}>+2.4%</span></div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: '#2563eb' }}>86% <span style={{ fontSize: 14, color: '#10b981', fontWeight: 500 }}>+2.4%</span></div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', height: 200, gap: 12 }}>
                   {[30, 45, 40, 60, 55, 75, 70, 86].map((st, i) => (
-                    <motion.div 
+                    <motion.div
                       key={i}
                       initial={{ height: 0 }}
                       whileInView={{ height: `${st}%` }}
@@ -496,9 +496,9 @@ export default function LandingPage() {
                   ))}
                 </div>
               </div>
-              
+
               {/* Floating element */}
-              <motion.div 
+              <motion.div
                 animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
                 style={{ position: 'absolute', bottom: -20, left: -20, background: 'white', padding: '16px 24px', borderRadius: 16, boxShadow: '0 10px 25px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}
               >
@@ -519,32 +519,32 @@ export default function LandingPage() {
       <section className="section">
         <h2>Why EAMCET Pro?</h2>
         <p className="subtitle">See how we stack up against traditional study methods.</p>
-        
+
         <div className="advantage-table-wrapper">
           <div className="advantage-table">
             <div className="adv-row header">
-            <div className="adv-cell feature-name">Features</div>
-            <div className="adv-cell eamcet-pro">EAMCET Pro</div>
-            <div className="adv-cell others">Books & Coaching</div>
-          </div>
-          {[
-            { title: "Mock Test Environment", pro: true, others: false },
-            { title: "Real-time Accuracy Tracking", pro: true, others: false },
-            { title: "College & Rank Prediction", pro: true, others: false },
-            { title: "Official PYQ Repository", pro: true, others: true },
-            { title: "Detailed Analytics", pro: true, others: false },
-          ].map((row, i) => (
-            <div className="adv-row" key={i}>
-              <div className="adv-cell feature-name">{row.title}</div>
-              <div className="adv-cell eamcet-pro">
-                {row.pro ? <CheckCircle2 color="#2563eb" /> : <X color="#94a3b8" />}
-              </div>
-              <div className="adv-cell others">
-                {row.others ? <CheckCircle2 color="#10b981" /> : <X color="#ef4444" />}
-              </div>
+              <div className="adv-cell feature-name">Features</div>
+              <div className="adv-cell eamcet-pro">EAMCET Pro</div>
+              <div className="adv-cell others">Books & Coaching</div>
             </div>
-          ))}
-        </div>
+            {[
+              { title: "Mock Test Environment", pro: true, others: false },
+              { title: "Real-time Accuracy Tracking", pro: true, others: false },
+              { title: "College & Rank Prediction", pro: true, others: false },
+              { title: "Official PYQ Repository", pro: true, others: true },
+              { title: "Detailed Analytics", pro: true, others: false },
+            ].map((row, i) => (
+              <div className="adv-row" key={i}>
+                <div className="adv-cell feature-name">{row.title}</div>
+                <div className="adv-cell eamcet-pro">
+                  {row.pro ? <CheckCircle2 color="#2563eb" /> : <X color="#94a3b8" />}
+                </div>
+                <div className="adv-cell others">
+                  {row.others ? <CheckCircle2 color="#10b981" /> : <X color="#ef4444" />}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -566,13 +566,13 @@ export default function LandingPage() {
             <h3 className="sora-font"><div style={{ width: 24, height: 24, borderRadius: 6, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>E</div> EAMCET Pro</h3>
             <p>The ultimate preparation companion for Telangana State Engineering, Agriculture & Medical Common Entrance Test.</p>
           </div>
-          
+
           <div className="footer-links">
             <div className="link-group">
               <h4>Product</h4>
               <ul>
                 <li><a href="#features">Features</a></li>
-                <li><a href="#predictor">College Predictor</a></li>
+                <li><a href="/predictor">College Predictor</a></li>
                 <li><a href="#">Pricing</a></li>
               </ul>
             </div>
