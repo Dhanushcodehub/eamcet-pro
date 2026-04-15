@@ -92,7 +92,7 @@ function PapersPage({ sessions, onStart, plan = 'free', onUpgrade }) {
 
               <button onClick={() => !isLocked && onStart(paper)}
                 style={{ width: "100%", padding: "10px", background: isLocked ? "#e2e8f0" : "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 10, color: isLocked ? "#94a3b8" : "#ffffff", fontSize: 13, fontWeight: 600, cursor: isLocked ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", transition: "all 0.15s", boxShadow: isLocked ? "none" : "0 4px 12px rgba(37,99,235,0.2)", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                {isLocked ? <><Lock size={13} /> Pro Only</> : done ? 'Retake Paper →' : 'Start Paper →'}
+                {isLocked ? <><Lock size={13} /> Pro Only</> : done ? 'Retake →' : 'Start →'}
               </button>
             </div>
           );
