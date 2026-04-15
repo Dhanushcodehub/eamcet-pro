@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Flame, CheckCircle, FileText, Star, BarChart2,
-  Target, Atom, FlaskConical, Compass, Timer, Check,
+  Target, Atom, FlaskConical, Compass, Timer, Check, Zap, Lock
 } from "lucide-react";
 import { PAPER_SETS } from "../data/index.js";
 import { getTodayStr } from "../lib/utils.js";
@@ -73,14 +73,14 @@ function StreakCalendar({ sessions, streak }) {
       <div className="sc-grid">
         {cells.map((cell, idx) => {
           let bg = "#ffffff", border = "1px solid #e2e8f0", shadow = "none", outline = "none";
-          if (cell.active) { bg = "linear-gradient(135deg, #2563eb, #1d4ed8)"; border = "1px solid transparent"; shadow = "0 1px 3px rgba(0,0,0,0.05)"; }
-          if (cell.isToday && !cell.active) { bg = "#e2e8f0"; border = "1px solid rgba(165,180,252,0.42)"; outline = "2px solid rgba(165,180,252,0.18)"; }
-          if (cell.isToday && cell.active) { shadow = "0 0 8px #475569"; outline = "2px solid #64748b"; }
+          if (cell.active) { bg = "linear-gradient(135deg, #f97316, #ea580c)"; border = "1px solid transparent"; shadow = "0 1px 3px rgba(0,0,0,0.05)"; }
+          if (cell.isToday && !cell.active) { bg = "#e2e8f0"; border = "1px solid rgba(249,115,22,0.42)"; outline = "2px solid rgba(249,115,22,0.18)"; }
+          if (cell.isToday && cell.active) { shadow = "0 0 8px #f97316"; outline = "2px solid #fb923c"; }
           return (
-            <div key={idx} className="sc-cell" title={`${cell.label}${cell.active ? " ✓ Solved" : ""}`}
+            <div key={idx} className="sc-cell" title={`${cell.label}${cell.active ? " 🔥 Streak" : ""}`}
               style={{ background: bg, border, boxShadow: shadow, outline, outlineOffset: "2px" }}>
-              {cell.active && <div style={{ color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center" }}><Check size={12} strokeWidth={3} /></div>}
-              {cell.isToday && !cell.active && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#3b82f6" }} />}
+              {cell.active && <div style={{ color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center" }}><Flame size={12} strokeWidth={2.5} fill="currentColor" /></div>}
+              {cell.isToday && !cell.active && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#f97316" }} />}
             </div>
           );
         })}
@@ -89,8 +89,8 @@ function StreakCalendar({ sessions, streak }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: "linear-gradient(135deg,#2563eb,#1d4ed8)" }} />
-            <span style={{ color: "#64748b", fontSize: 9 }}>Solved</span>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: "linear-gradient(135deg,#f97316,#ea580c)" }} />
+            <span style={{ color: "#64748b", fontSize: 9 }}>Streak</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <div style={{ width: 8, height: 8, borderRadius: 2, background: "#ffffff", border: "1px solid #64748b" }} />
@@ -98,7 +98,7 @@ function StreakCalendar({ sessions, streak }) {
           </div>
         </div>
         <span style={{ color: "#64748b", fontSize: 9 }}>
-          <span style={{ color: "#3b82f6", fontWeight: 700 }}>{activeDays}</span> active
+          <span style={{ color: "#f97316", fontWeight: 700 }}>{activeDays}</span> active
         </span>
       </div>
     </div>
@@ -172,8 +172,8 @@ function SubjectProgress({ sessions }) {
   );
 }
 
-// ─── Dashboard ──────────────────────────────────────────────────────────────────
-function Dashboard({ user, streak, accuracy, totalPapers, sessions, onStartPaper, onRequireAuth }) {
+// ─── Dashboard ──────────────────────────────────────────────────────────────
+function Dashboard({ user, plan = 'free', streak, accuracy, totalPapers, sessions, onStartPaper, onRequireAuth }) {
   const today = getTodayStr();
   const solvedToday = sessions.filter(s => s.date === today).length;
   const todayPaper = PAPER_SETS[Math.floor(new Date().getDate() % PAPER_SETS.length)];
@@ -251,7 +251,7 @@ function Dashboard({ user, streak, accuracy, totalPapers, sessions, onStartPaper
         `}</style>
 
         {/* Header */}
-        <div className="dash-fade dash-f1" style={{ marginBottom: 22 }}>
+        <div className="dash-fade dash-f1" style={{ marginBottom: 18 }}>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: -0.4, display: "flex", alignItems: "center", gap: 10 }}>
             Welcome back!
             <span style={{ display: "inline-flex", padding: "3px 10px", background: "#f1f5f9", border: "1px solid rgba(249,115,22,0.28)", borderRadius: 20, alignItems: "center", gap: 5 }}>
@@ -266,9 +266,23 @@ function Dashboard({ user, streak, accuracy, totalPapers, sessions, onStartPaper
           </p>
         </div>
 
+        {/* Free plan upgrade banner */}
+        {user && plan === 'free' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'linear-gradient(90deg,#eff6ff,#f0f9ff)', border: '1px solid #bfdbfe', borderRadius: 14, padding: '14px 18px', marginBottom: 18, flexWrap: 'wrap' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Zap size={18} color='white' />
+            </div>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>You're on the Free Plan</div>
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Unlock full mock tests, deep analytics, rank predictor & more</div>
+            </div>
+            <a href='/pricing' style={{ background: '#2563eb', color: 'white', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 700, textDecoration: 'none', fontFamily: 'Sora,sans-serif', whiteSpace: 'nowrap', flexShrink: 0 }}>Upgrade → ₹199/mo</a>
+          </div>
+        )}
+
         {/* Stat Cards */}
         <div className="grid-4 dash-fade dash-f2" style={{ marginBottom: 18 }}>
-          <StatCard icon={<Flame size={20} color="#f97316" />} value={streak} label="Day Streak" accent="#f97316" sublabel={streak >= 3 ? "🔥 On fire!" : "Build it up"} />
+          <StatCard icon={<Flame size={20} color="#f97316" />} value={streak} label="Day Streak" accent="#f97316" sublabel={streak >= 3 ? "On fire!" : "Build it up"} />
           <StatCard icon={<CheckCircle size={20} color="#10b981" />} value={`${accuracy}%`} label="Accuracy" accent="#10b981" sublabel={accuracy >= 70 ? "Excellent" : accuracy >= 50 ? "Good" : "Needs work"} />
           <StatCard icon={<FileText size={20} color="#2563eb" />} value={totalPapers} label="Papers Done" accent="#2563eb" sublabel={`${solvedToday} today`} />
           <StatCard icon={<Star size={20} color="#f59e0b" />} value={`${bestScore}%`} label="Best Score" accent="#f59e0b" sublabel="All time high" />

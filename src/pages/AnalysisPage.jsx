@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, X, BarChart2, Target, Atom, FlaskConical, Compass } from "lucide-react";
+import { Check, X, BarChart2, Target, Atom, FlaskConical, Compass, TrendingUp, CheckCircle2, Trophy } from "lucide-react";
 
 const subjectColors = {
   Physics:     "#2563eb",
@@ -187,9 +187,12 @@ function AnalysisPage({ data, onBack }) {
           </div>
 
           {/* Performance note */}
-          <div style={{ marginTop:16, padding:"14px 18px", background: accuracy >= 70 ? "#e2e8f0" : accuracy >= 50 ? "#f1f5f9" : "#fef2f2", border:`1px solid ${accuracy>=70?"rgba(16,185,129,0.25)":accuracy>=50?"rgba(245,158,11,0.22)":"rgba(239,68,68,0.22)"}`, borderRadius:12 }}>
+          <div style={{ marginTop:16, padding:"14px 18px", background: accuracy >= 70 ? "#ecfdf5" : accuracy >= 50 ? "#fffbeb" : "#fef2f2", border:`1px solid ${accuracy>=70?"rgba(16,185,129,0.25)":accuracy>=50?"rgba(245,158,11,0.22)":"rgba(239,68,68,0.22)"}`, borderRadius:12, display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ flexShrink:0, color: accuracy>=70?"#10b981":accuracy>=50?"#f59e0b":"#f87171" }}>
+              {accuracy >= 70 ? <Trophy size={16} /> : accuracy >= 50 ? <TrendingUp size={16} /> : <Target size={16} />}
+            </span>
             <span style={{ color: accuracy>=70?"#10b981":accuracy>=50?"#f59e0b":"#f87171", fontSize:13, fontWeight:600 }}>
-              {accuracy >= 70 ? "🎉 Great performance! Keep solving papers to maintain your edge." : accuracy >= 50 ? "📈 Decent score. Focus on weak topics to push above 70%." : "💪 Keep practicing! Review your wrong answers and focus on fundamentals."}
+              {accuracy >= 70 ? "Great performance! Keep solving papers to maintain your edge." : accuracy >= 50 ? "Decent score. Focus on weak topics to push above 70%." : "Keep practicing! Review your wrong answers and focus on fundamentals."}
             </span>
           </div>
         </div>
@@ -216,7 +219,9 @@ function AnalysisPage({ data, onBack }) {
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             {filteredQs.length === 0 && (
               <div style={{ textAlign:"center", padding:"48px 20px", color:"#94a3b8" }}>
-                <div style={{ fontSize:36, marginBottom:12 }}>🎉</div>
+                <div style={{ width:48, height:48, borderRadius:14, background:'#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
+                  <CheckCircle2 size={24} color="#10b981" />
+                </div>
                 <div style={{ fontSize:15, fontWeight:600 }}>No questions in this category</div>
               </div>
             )}

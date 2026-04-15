@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { PenTool, Timer, Flag, Check, X, SkipForward, Zap } from "lucide-react";
+import { PenTool, Timer, Flag, Check, X, SkipForward, Zap, FileText } from "lucide-react";
 import { QUESTION_BANK } from "../data/index.js";
 
 function ExamPage({ paper, onSubmit, onExit }) {
@@ -11,7 +11,9 @@ function ExamPage({ paper, onSubmit, onExit }) {
   if (allQs.length === 0) {
     return (
       <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 32, textAlign: "center" }}>
-        <div style={{ fontSize: 48 }}>📄</div>
+        <div style={{ width:64, height:64, borderRadius:18, background:'linear-gradient(135deg,#eff6ff,#dbeafe)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:8 }}>
+          <FileText size={32} color="#2563eb" />
+        </div>
         <h2 style={{ margin: 0, color: "#0f172a", fontSize: 22, fontWeight: 700 }}>Questions Coming Soon</h2>
         <p style={{ margin: 0, color: "#64748b", fontSize: 14, maxWidth: 380, lineHeight: 1.6 }}>
           The question set for <strong>{paper.label}</strong> hasn't been added yet. Check back later!

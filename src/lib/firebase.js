@@ -6,6 +6,7 @@ import {
   getDocs,
   query,
   limit,
+  where
 } from "firebase/firestore";
 
 // ─── Mock Store (used when Firebase is not connected) ──────────────────────────
@@ -60,4 +61,20 @@ export const db = {
       .map(([k, v]) => ({ id: k.split("/")[1], ...v }))
       .sort((a, b) => (b.streak || 0) - (a.streak || 0));
   },
+
+  /** Fetch users referred by a specific code */
+  async getReferrals(referralCode) {
+    if (window._firebaseDb) {
+      const q = query(
+        collection(window._firebaseDb, "leaderboard"),
+        where("referredBy", "==", referralCode)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({id: d.id, ...d.data()}));
+    }
+    // Mock fallback
+    return Object.entries(MOCK_STORE)
+      .filter(([k, v]) => k.startsWith("leaderboard/") && v?.referredBy === referralCode)
+      .map(([k, v]) => ({ id: k.split("/")[1], ...v }));
+  }
 };

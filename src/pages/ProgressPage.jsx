@@ -146,7 +146,7 @@ function ProgressPage({ user, sessions, streak, accuracy, onRequireAuth }) {
       {/* Stats */}
       <div className="pg-stats-grid pg-fade pg-f2">
         {[
-          { icon: <Flame size={20} color="#f97316" />,       value: streak,          label: "Day Streak",    sub: streak >= 3 ? "🔥 On fire!" : "Build it up",                             accent: "#f97316" },
+          { icon: <Flame size={20} color="#f97316" />,       value: streak,          label: "Day Streak",    sub: streak >= 3 ? "On fire!" : "Build it up",                             accent: "#f97316" },
           { icon: <CheckCircle size={20} color="#10b981" />, value: `${accuracy}%`,  label: "Avg Accuracy",  sub: accuracy >= 70 ? "Excellent" : accuracy >= 50 ? "Keep going" : "Needs work", accent: "#10b981" },
           { icon: <FileText size={20} color="#2563eb" />,    value: totalPapers,     label: "Papers Solved", sub: `${thisWeekCount} this week`,                                              accent: "#2563eb" },
           { icon: <Star size={20} color="#f59e0b" />,        value: `${bestScore}%`, label: "Best Score",    sub: "All time high",                                                           accent: "#f59e0b" },

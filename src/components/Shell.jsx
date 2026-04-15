@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, FileText, TrendingUp, Trophy, BookOpen, Layers, Target, Menu, X, ChevronLeft, ChevronRight, LogOut, LogIn } from "lucide-react";
+import { LayoutDashboard, FileText, TrendingUp, Trophy, BookOpen, Layers, Target, Menu, X, ChevronLeft, ChevronRight, LogOut, LogIn, Gift, CreditCard, Zap, Star, Crown } from "lucide-react";
 
-function Shell({ user, onLogout, children }) {
+function Shell({ user, plan = 'free', onLogout, children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -14,13 +14,18 @@ function Shell({ user, onLogout, children }) {
   }, [location.pathname]);
 
   const navItems = [
-    { id: "dashboard",    label: "Dashboard",    path: "/dashboard",    icon: <LayoutDashboard size={20} /> },
-    { id: "papers",       label: "Papers",       path: "/papers",       icon: <FileText size={20} /> },
-    { id: "flashcards",   label: "Flashcards",   path: "/flashcards",   icon: <Layers size={20} /> },
-    { id: "progress",     label: "Progress",     path: "/progress",     icon: <TrendingUp size={20} /> },
-    { id: "leaderboard",  label: "Leaderboard",  path: "/leaderboard",  icon: <Trophy size={20} /> },
-    { id: "predictor",    label: "Predictor",    path: "/predictor",    icon: <Target size={20} /> },
-    { id: "syllabus",     label: "Syllabus",     path: "/syllabus",     icon: <BookOpen size={20} /> },
+    { id: "dashboard", label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={20} /> },
+    { id: "papers", label: "Papers", path: "/papers", icon: <FileText size={20} /> },
+    { id: "flashcards", label: "Flashcards", path: "/flashcards", icon: <Layers size={20} /> },
+    { id: "progress", label: "Progress", path: "/progress", icon: <TrendingUp size={20} /> },
+    { id: "leaderboard", label: "Leaderboard", path: "/leaderboard", icon: <Trophy size={20} /> },
+    { id: "predictor", label: "Predictor", path: "/predictor", icon: <Target size={20} /> },
+    { id: "syllabus", label: "Syllabus", path: "/syllabus", icon: <BookOpen size={20} /> },
+  ];
+
+  const extraNavItems = [
+    { id: "pricing", label: "Pricing", path: "/pricing", icon: <CreditCard size={20} />, color: "#2563eb" },
+    { id: "refer", label: "Refer & Earn", path: "/refer", icon: <Gift size={20} />, color: "#f59e0b", badge: true },
   ];
 
   const currentId = location.pathname.split("/")[1] || "dashboard";
@@ -299,6 +304,36 @@ function Shell({ user, onLogout, children }) {
           background: #1d4ed8;
         }
 
+        /* Upgrade to Pro Button */
+        .upgrade-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 20px 14px;
+          border-radius: 12px;
+          border: none;
+          cursor: pointer;
+          font-family: 'Sora', sans-serif;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: #ffffff;
+          font-weight: 600;
+          transition: all 0.2s;
+          margin: 12px 0;
+          white-space: nowrap;
+          overflow: hidden;
+          box-shadow: 0 4px 14px rgba(37,99,235,0.25);
+        }
+        .upgrade-btn:hover {
+          background: linear-gradient(135deg, #1d4ed8, #1e40af);
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(37,99,235,0.35);
+        }
+        @media (min-width: 901px) {
+          .sidebar.collapsed .upgrade-btn { justify-content: center; }
+        }
+
+
         /* Main Content Area */
         .main-content { 
           flex: 1; 
@@ -383,11 +418,11 @@ function Shell({ user, onLogout, children }) {
             <div className="brand-logo">E</div>
             <span className="brand-text">EAMCET <span>Pro</span></span>
           </div>
-          
+
           <button className="desktop-toggle" onClick={() => setIsCollapsed(!isCollapsed)} aria-label="Toggle menu" title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}>
             {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
-          
+
           <button className="mobile-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} aria-label="Toggle menu">
             {mobileMenuOpen ? <X size={28} /> : <Menu size={28} />}
           </button>
@@ -401,38 +436,90 @@ function Shell({ user, onLogout, children }) {
                 <button key={item.id} className={`nav-btn ${isActive ? 'active' : ''}`} onClick={() => navigate(item.path)}
                   title={isCollapsed ? item.label : ""}
                 >
-                  <span className="icon-wrapper">{item.icon}</span> 
+                  <span className="icon-wrapper">{item.icon}</span>
                   <span className="nav-label">{item.label}</span>
                 </button>
-              )
+              );
+            })}
+
+            {/* Divider */}
+            <div style={{ height: 1, background: '#f1f5f9', margin: '8px 4px' }} />
+
+            {extraNavItems.map(item => {
+              const isActive = currentId === item.id;
+              return (
+                <button
+                  key={item.id}
+                  className={`nav-btn ${isActive ? 'active' : ''}`}
+                  onClick={() => navigate(item.path)}
+                  title={isCollapsed ? item.label : ""}
+                  style={isActive ? {} : { color: item.color }}
+                >
+                  <span className="icon-wrapper">{item.icon}</span>
+                  <span className="nav-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {item.label}
+                    {item.badge && !isCollapsed && (
+                      <span style={{ background: '#fef3c7', color: '#92400e', fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 99, border: '1px solid #fde68a' }}>
+                        NEW
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
             })}
           </nav>
-          
+
+          {/* Upgrade to Pro banner — only for free users */}
+          {user && plan === 'free' && (
+            <button
+              className="upgrade-btn"
+              onClick={() => navigate('/pricing')}
+              title={isCollapsed ? 'Upgrade to Pro' : ''}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Zap size={18} />
+              </span>
+              <span className="nav-label" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Upgrade to Pro</span>
+                <span style={{ fontSize: 11, opacity: 0.85 }}>₹199/month</span>
+              </span>
+            </button>
+          )}
+
           <div className="sidebar-profile">
             <div className="sidebar-profile-info">
-              <div className={`profile-avatar ${user ? 'logged-in' : ''}`}>
-                {user ? user.name?.[0]?.toUpperCase() : "G"}
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <div className={`profile-avatar ${user ? 'logged-in' : ''}`}>
+                  {user ? user.name?.[0]?.toUpperCase() : 'G'}
+                </div>
+                {(plan === 'pro' || plan === 'annual') && (
+                  <div style={{ position: 'absolute', bottom: -4, right: -4, background: '#f59e0b', color: 'white', fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 99, letterSpacing: '0.04em', whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(245,158,11,0.4)' }}>
+                    PRO
+                  </div>
+                )}
               </div>
               <div className="sidebar-profile-text">
-                <p style={{ margin: 0, color: "#0f172a", fontSize: 14, fontWeight: 700 }}>{user ? user.name : "Guest"}</p>
-                <p style={{ margin: 0, color: "#a3aed1", fontSize: 12, fontWeight: 500, marginTop: 2 }}>{user ? "Student" : "Not logged in"}</p>
+                <p style={{ margin: 0, color: '#0f172a', fontSize: 14, fontWeight: 700 }}>{user ? user.name : 'Guest'}</p>
+                <p style={{ margin: 0, color: '#a3aed1', fontSize: 12, fontWeight: 500, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {plan === 'pro' ? (<><Star size={11} color="#f59e0b" fill="#f59e0b" /> Pro Member</>) : plan === 'annual' ? (<><Crown size={11} color="#7c3aed" fill="#7c3aed" /> Annual Pro</>) : user ? 'Free Plan' : 'Not logged in'}
+                </p>
               </div>
             </div>
-            
-            <button 
-              className={`sidebar-logout ${user ? 'logged-in' : 'logged-out'}`} 
-              onClick={user ? onLogout : () => navigate("/login")} 
+
+            <button
+              className={`sidebar-logout ${user ? 'logged-in' : 'logged-out'}`}
+              onClick={user ? onLogout : () => navigate("/login")}
               title={user ? "Sign Out" : "Sign In / Sign Up"}
             >
-               {user ? <LogOut size={18} /> : <LogIn size={18} />}
-               <span className="logout-text">{user ? "Sign Out" : "Sign In / Sign Up"}</span>
+              {user ? <LogOut size={18} /> : <LogIn size={18} />}
+              <span className="logout-text">{user ? "Sign Out" : "Sign In / Sign Up"}</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="main-content" onClick={() => { if(mobileMenuOpen) setMobileMenuOpen(false) }}>
+      <div className="main-content" onClick={() => { if (mobileMenuOpen) setMobileMenuOpen(false) }}>
         {children}
       </div>
     </div>

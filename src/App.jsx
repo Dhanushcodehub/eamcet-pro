@@ -23,6 +23,8 @@ import LeaderboardPage from "./pages/LeaderboardPage.jsx";
 import SyllabusPage from "./pages/SyllabusPage.jsx";
 import FlashcardsPage from "./pages/FlashcardsPage.jsx";
 import PredictorPage from "./pages/PredictorPage.jsx";
+import PricingPage from "./pages/PricingPage.jsx";
+import ReferPage from "./pages/ReferPage.jsx";
 import VerifyPage from "./pages/VerifyPage.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
@@ -35,6 +37,7 @@ export default function App() {
   const [analysisData, setAnalysisData] = useState(null);
   const [sessions, setSessions]       = useState([]);
   const [showAuthPopup, setShowAuthPopup] = useState(false);
+  const [plan, setPlan]               = useState('free'); // 'free' | 'pro' | 'annual'
 
   const handleRequireAuth = () => setShowAuthPopup(true);
 
@@ -44,15 +47,18 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(window._firebaseAuth, (firebaseUser) => {
       console.log("[App] onAuthStateChanged fired. User:", firebaseUser ? firebaseUser.email : "null");
       if (firebaseUser) {
+        const hasPhone = !!firebaseUser.phoneNumber;
+
         setUser({
           uid:   firebaseUser.uid,
           name:  firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
           email: firebaseUser.email,
           emailVerified: firebaseUser.emailVerified,
+          phoneVerified: hasPhone,
         });
 
         const isPasswordProvider = firebaseUser.providerData?.some(p => p.providerId === 'password');
-        const needsVerification = isPasswordProvider && !firebaseUser.emailVerified;
+        const needsVerification = isPasswordProvider && !firebaseUser.emailVerified && !hasPhone;
 
         if (window.location.pathname === "/" || window.location.pathname === "/login") {
           if (needsVerification) {
@@ -73,9 +79,9 @@ export default function App() {
     return () => unsubscribe();
   }, [navigate]);
 
-  // ── Load sessions (localStorage first, then Firestore) ───────────────────────
+  // ── Load sessions + plan (localStorage first, then Firestore) ───────────────
   useEffect(() => {
-    if (!user) { setSessions([]); return; }
+    if (!user) { setSessions([]); setPlan('free'); return; }
 
     const cached = localLoad(user.uid);
     if (cached.length > 0) setSessions(cached);
@@ -87,9 +93,50 @@ export default function App() {
           setSessions(prev => remote.length >= prev.length ? remote : prev);
           localSave(user.uid, remote.length >= cached.length ? remote : cached);
         }
+        // Load saved subscription plan
+        if (d?.plan) setPlan(d.plan);
+        
+        // Track unique referral if they just signed up using a URL
+        if (!d?.referredBy) {
+          const refCode = sessionStorage.getItem('eamcet_referral_code');
+          const myCode = `EAMCET-${user.uid.slice(0, 8).toUpperCase()}`;
+          console.log(`[Referral Process] URL Code: ${refCode} | My Code: ${myCode}`);
+          
+          if (refCode) {
+            if (refCode === myCode) {
+              console.log("[Referral Process] Blocked self-referral.");
+            } else {
+              Promise.all([
+                db.update(`users/${user.uid}`, { 
+                  referredBy: refCode, 
+                  referralCredited: false,
+                  joinedAt: Date.now()
+                }),
+                db.update(`leaderboard/${user.uid}`, {
+                  referredBy: refCode
+                })
+              ]).then(() => console.log(`[Referral Process] Successfully linked referrer: ${refCode}`));
+            }
+            sessionStorage.removeItem('eamcet_referral_code');
+          }
+        } else {
+          console.log(`[Referral Process] Already referred by: ${d.referredBy}`);
+        }
       })
-      .catch(() => {/* localStorage already displayed — nothing to do */});
+      .catch(() => {/* localStorage already displayed */});
   }, [user]);
+
+  // ── Save plan to Firestore after successful payment ──────────────────────
+  const updatePlan = async (newPlan) => {
+    setPlan(newPlan);
+    if (user) {
+      try {
+        await db.update(`users/${user.uid}`, { plan: newPlan, planUpdatedAt: Date.now() });
+      } catch (e) {
+        console.error('Failed to save plan:', e);
+      }
+    }
+  };
 
   // ── Save session after exam ───────────────────────────────────────────────────
   const saveSession = async (rawSession) => {
@@ -150,35 +197,37 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<AuthPage user={user} onLogin={u => { setUser(u); navigate("/dashboard"); }} />} />
         <Route path="/verify" element={<VerifyPage onVerified={(u) => { setUser(u); navigate("/dashboard"); }} />} />
+        <Route path="/pricing" element={<PricingPage user={user} plan={plan} onUpgrade={updatePlan} />} />
+        <Route path="/refer" element={<ReferPage user={user} plan={plan} />} />
         
         {/* Shell-wrapped routes */}
         <Route path="/*" element={
-          (user && !user.emailVerified) ? <Navigate to="/login" replace /> : (
-            <Shell user={user} onLogout={handleLogout}>
+          (user && !user.emailVerified && !user.phoneVerified) ? <Navigate to="/login" replace /> : (
+            <Shell user={user} plan={plan} onLogout={handleLogout}>
             <Routes>
               <Route path="dashboard" element={<>
-                <SEO title="Dashboard" description="Your EAMCET Pro dashboard. Track your streak, accuracy, and recent activity." path="/dashboard" />
-                <Dashboard user={user} streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { if(!user) { handleRequireAuth(); return; } setActivePaper(p); navigate("/exam"); }} onRequireAuth={handleRequireAuth} />
+                <SEO title="Dashboard" description="Your EAMCET Pro dashboard." path="/dashboard" />
+                <Dashboard user={user} plan={plan} streak={streak} accuracy={accuracy} totalPapers={totalPapers} sessions={sessions} onStartPaper={p => { if(!user) { handleRequireAuth(); return; } setActivePaper(p); navigate("/exam"); }} onRequireAuth={handleRequireAuth} />
               </>} />
 
               <Route path="papers" element={<>
                 <SEO title="Practice Papers" description="Access full-length EAMCET practice papers and mock tests." path="/papers" />
-                <PapersPage sessions={sessions} onStart={p => { if(!user) { handleRequireAuth(); return; } setActivePaper(p); navigate("/exam"); }} />
+                <PapersPage plan={plan} sessions={sessions} onStart={p => { if(!user) { handleRequireAuth(); return; } setActivePaper(p); navigate("/exam"); }} onUpgrade={() => navigate('/pricing')} />
               </>} />
 
               <Route path="progress" element={<>
-                <SEO title="My Progress" description="Detailed analysis of your preparation progress and subject-wise accuracy." path="/progress" />
-                <ProgressPage user={user} sessions={sessions} streak={streak} accuracy={accuracy} onRequireAuth={handleRequireAuth} />
+                <SEO title="My Progress" description="Detailed analysis of your preparation progress." path="/progress" />
+                <ProgressPage user={user} plan={plan} sessions={sessions} streak={streak} accuracy={accuracy} onRequireAuth={handleRequireAuth} onUpgrade={() => navigate('/pricing')} />
               </>} />
 
               <Route path="flashcards" element={<>
-                <SEO title="Flashcards" description="Study EAMCET concepts with smart flashcards for Physics, Chemistry, and Mathematics." path="/flashcards" />
-                <FlashcardsPage />
+                <SEO title="Flashcards" description="Study EAMCET concepts with smart flashcards." path="/flashcards" />
+                <FlashcardsPage plan={plan} onUpgrade={() => navigate('/pricing')} />
               </>} />
 
               <Route path="leaderboard" element={<>
                 <SEO title="Leaderboard" description="See where you stand among thousands of EAMCET aspirants." path="/leaderboard" />
-                <LeaderboardPage user={user} streak={streak} accuracy={accuracy} sessions={sessions} />
+                <LeaderboardPage user={user} plan={plan} streak={streak} accuracy={accuracy} sessions={sessions} onUpgrade={() => navigate('/pricing')} />
               </>} />
 
               <Route path="syllabus" element={<>
@@ -187,8 +236,18 @@ export default function App() {
               </>} />
 
               <Route path="predictor" element={<>
-                <SEO title="College Predictor" description="EAMCET rank and college predictor tool based on normalized 2024 trends." path="/predictor" />
-                <PredictorPage />
+                <SEO title="College Predictor" description="EAMCET rank and college predictor tool based on 2024 data." path="/predictor" />
+                <PredictorPage plan={plan} onUpgrade={() => navigate('/pricing')} />
+              </>} />
+
+              <Route path="pricing" element={<>
+                <SEO title="Pricing" description="EAMCET Pro plans — Free, Pro at ₹199/month, and Annual." path="/pricing" />
+                <PricingPage user={user} plan={plan} onUpgrade={updatePlan} />
+              </>} />
+
+              <Route path="refer" element={<>
+                <SEO title="Refer & Earn" description="Refer friends to EAMCET Pro and earn free Pro access." path="/refer" />
+                <ReferPage user={user} plan={plan} />
               </>} />
 
               <Route index element={<Navigate to="/dashboard" replace />} />

@@ -5,8 +5,26 @@ import { Helmet } from 'react-helmet-async';
 import {
   ArrowRight, CheckCircle2, BarChart3, Target,
   BookOpen, Trophy, Zap, BrainCircuit,
-  LayoutDashboard, Layers, Star, Menu, X, Rocket, GraduationCap, Shield
+  LayoutDashboard, Layers, Star, Menu, X, Rocket, GraduationCap, Shield, Clock
 } from 'lucide-react';
+
+// Exam countdown banner component
+function ExamCountdown() {
+  const examDate = new Date('2025-05-20T00:00:00');
+  const now = new Date();
+  const diff = examDate - now;
+  const days = Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+  return (
+    <div style={{ background: 'linear-gradient(90deg, #fef3c7, #fde68a)', padding: '12px 24px', textAlign: 'center', borderBottom: '1px solid #fcd34d' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <Clock size={16} color='#92400e' />
+        <span style={{ fontWeight: 700, color: '#92400e', fontSize: 14 }}>TS EAMCET 2025 in approximately <span style={{ fontSize: 18, color: '#b45309' }}>{days}</span> days!</span>
+        <span style={{ color: '#92400e', fontSize: 13 }}>—</span>
+        <a href='/login' style={{ fontWeight: 700, color: '#1d4ed8', fontSize: 13, textDecoration: 'underline' }}>Start your Pro trial now →</a>
+      </div>
+    </div>
+  );
+}
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -245,9 +263,11 @@ export default function LandingPage() {
           <div className="nav-links">
             <a href="#features" className="nav-link">Features</a>
             <a href="#how-it-works" className="nav-link">How it Works</a>
+            <a href="#pricing" className="nav-link">Pricing</a>
             <a href="/predictor" className="nav-link">Rank Predictor</a>
+            <Link to="/refer" className="nav-link" style={{ color: '#f59e0b', fontWeight: 700 }}>🎁 Refer & Earn</Link>
             <Link to="/login" className="btn btn-outline" style={{ marginLeft: 16, padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Sign In</Link>
-            <Link to="/login" className="btn btn-primary" style={{ padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Get Started</Link>
+            <Link to="/login" className="btn btn-primary" style={{ padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Start Free Trial</Link>
           </div>
 
           <button className="mobile-menu-btn" style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer' }} onClick={() => setMobileMenuOpen(true)}>
@@ -314,17 +334,17 @@ export default function LandingPage() {
 
             <motion.div variants={fadeInUp} className="stats-row">
               <div className="stat-item">
-                <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}><GraduationCap size={24} /></div>
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}><BookOpen size={24} /></div>
                 <div>
-                  <div className="stat-val">10,000+</div>
-                  <div className="stat-label">Students Active</div>
+                  <div className="stat-val">25+</div>
+                  <div className="stat-label">Official Papers</div>
                 </div>
               </div>
               <div className="stat-item">
                 <div style={{ width: 48, height: 48, borderRadius: 12, background: '#f0f7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}><CheckCircle2 size={24} /></div>
                 <div>
-                  <div className="stat-val">1M+</div>
-                  <div className="stat-label">Questions Practiced</div>
+                  <div className="stat-val">4,000+</div>
+                  <div className="stat-label">Real PYQs</div>
                 </div>
               </div>
             </motion.div>
@@ -390,6 +410,26 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* --- Social Proof Bar --- */}
+      <div style={{ background: '#0f172a', padding: '14px 24px', overflowX: 'hidden' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 40, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {[
+            { val: '25+', label: 'Official Shift Papers' },
+            { val: '4,000+', label: 'Real PYQs' },
+            { val: '94%', label: 'Rank Improvement' },
+            { val: '4.9★', label: 'Student Rating' },
+          ].map((s, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18, fontWeight: 800, color: '#60a5fa', fontFamily: 'Sora,sans-serif' }}>{s.val}</span>
+              <span style={{ fontSize: 13, color: '#94a3b8', fontWeight: 500 }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* --- Exam Countdown Banner --- */}
+      <ExamCountdown />
+
       {/* --- Core Features --- */}
       <section id="features" className="section section-bg-gray">
         <h2>Unfair Advantage for Your Prep</h2>
@@ -450,7 +490,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* --- Analytics UI Showcase (Parallaxish) --- */}
+      {/* --- Analytics UI Showcase --- */}
       <section className="section section-bg-gray" style={{ overflow: 'hidden' }}>
         <div className="nav-container">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 60, alignItems: 'center' }}>
@@ -463,7 +503,7 @@ export default function LandingPage() {
               </div>
               <h2 style={{ textAlign: 'left', marginBottom: 24, fontSize: 'clamp(32px, 4vw, 42px)' }}>Don't just test.<br />Analyze deep.</h2>
               <p style={{ color: '#64748b', fontSize: 18, lineHeight: 1.6, marginBottom: 32 }}>
-                Traditional tests just give you a score. EAMCET Pro breaks down your performance by subject, tracks your speed, and maps out your exact accuracy over time. Stop studying blind.
+                Traditional tests just give you a score. EAMCET Pro breaks down your performance by subject, tracks your speed, and maps out your exact accuracy over time.
               </p>
               <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {['Topic-wise Accuracy Breakdown', 'Time-per-question metrics', 'Historical trend comparison'].map((item, i) => (
@@ -496,8 +536,6 @@ export default function LandingPage() {
                   ))}
                 </div>
               </div>
-
-              {/* Floating element */}
               <motion.div
                 animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
                 style={{ position: 'absolute', bottom: -20, left: -20, background: 'white', padding: '16px 24px', borderRadius: 16, boxShadow: '0 10px 25px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}
@@ -548,6 +586,103 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* --- Testimonials --- */}
+      <section className="section section-bg-gray" id="testimonials">
+        <h2>Students Who Cracked It 🎉</h2>
+        <p className="subtitle">Real students. Real results. Real colleges.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: 24, maxWidth: 1100, margin: '0 auto' }}>
+          {[
+            { name: 'Sai Krishna R.', college: 'JNTUH - CSE', rank: 'Rank 412', quote: 'EAMCET Pro\'s analytics showed I was losing 40% marks in Calculus. Fixed it in 2 weeks. Got my dream branch!', avatar: 'S', score: '+38 rank improvement' },
+            { name: 'Priya Lakshmi', college: 'Osmania University - ECE', rank: 'Rank 1,204', quote: 'The rank predictor was spot on. I used it to target the right colleges and got exactly where I wanted!', avatar: 'P', score: 'Predicted rank was 99% accurate' },
+            { name: 'Arjun Reddy', college: 'NIT Warangal - Mech', rank: 'Rank 289', quote: 'Mock tests at 3am before the exam. The streak system kept me consistent for 60 days straight. Worth every rupee.', avatar: 'A', score: '60-day streak maintained' },
+          ].map((t, i) => (
+            <motion.div key={i}
+              initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1, duration: 0.5 }}
+              style={{ background: 'white', borderRadius: 20, padding: 28, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 16 }}
+            >
+              <div style={{ display: 'flex', gap: 4 }}>{[...Array(5)].map((_, j) => <Star key={j} size={16} fill="#f59e0b" color="#f59e0b" />)}</div>
+              <p style={{ color: '#0f172a', fontSize: 15, lineHeight: 1.7, fontStyle: 'italic', flex: 1 }}>"{t.quote}"</p>
+              <div style={{ background: '#f0f7ff', borderRadius: 10, padding: '8px 14px', fontSize: 13, color: '#2563eb', fontWeight: 600 }}>{t.score}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#2563eb,#1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: 18, fontFamily: 'Sora,sans-serif' }}>{t.avatar}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{t.name}</div>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>{t.college} · {t.rank}</div>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* --- Pricing Section --- */}
+      <section id="pricing" className="section">
+        <h2>Simple, Honest Pricing 💳</h2>
+        <p className="subtitle">Start free. Upgrade when you're ready. Cancel anytime.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 24, maxWidth: 1000, margin: '0 auto' }}>
+          {/* Free */}
+          <motion.div initial={{ opacity:0, y:30 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }} transition={{ duration:0.5 }}
+            style={{ background: 'white', borderRadius: 24, padding: '32px 28px', border: '2px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Free</div>
+              <div style={{ fontSize: 48, fontWeight: 800, color: '#0f172a' }}>₹0</div>
+              <div style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>3 papers/month · Basic features</div>
+            </div>
+            <Link to="/login" style={{ display: 'block', textAlign: 'center', padding: '13px 20px', border: '1.5px solid #e2e8f0', borderRadius: 12, color: '#475569', fontWeight: 700, fontSize: 14, textDecoration: 'none', fontFamily: 'Sora,sans-serif' }}>Get Started Free</Link>
+            {['3 Papers / month', 'Basic stats', 'Syllabus viewer'].map((f,i) => <div key={i} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, color:'#0f172a' }}><CheckCircle2 size={16} color="#94a3b8" />{f}</div>)}
+          </motion.div>
+
+          {/* Pro */}
+          <motion.div initial={{ opacity:0, y:30 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }} transition={{ duration:0.5, delay:0.1 }}
+            style={{ background: 'white', borderRadius: 24, padding: '32px 28px', border: '3px solid #2563eb', boxShadow: '0 0 0 6px rgba(37,99,235,0.08)', display: 'flex', flexDirection: 'column', gap: 20, position: 'relative' }}>
+            <div style={{ position:'absolute', top:-16, left:'50%', transform:'translateX(-50%)', background:'#2563eb', color:'white', fontSize:12, fontWeight:700, padding:'4px 18px', borderRadius:99, whiteSpace:'nowrap' }}>🔥 Most Popular</div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Pro</div>
+              <div style={{ fontSize: 48, fontWeight: 800, color: '#0f172a' }}>₹199<span style={{ fontSize:16, color:'#64748b', fontWeight:500 }}>/mo</span></div>
+              <div style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>7-day free trial · No card needed</div>
+            </div>
+            <Link to="/pricing" style={{ display: 'block', textAlign: 'center', padding: '14px 20px', background: '#2563eb', color: 'white', borderRadius: 12, fontWeight: 700, fontSize: 14, textDecoration: 'none', fontFamily: 'Sora,sans-serif', boxShadow: '0 4px 14px rgba(37,99,235,0.3)' }}>Start 7-Day Free Trial 🚀</Link>
+            {['Unlimited papers', 'Full mock tests', 'Deep analytics', 'Rank predictor', 'Leaderboard', 'Refer & Earn'].map((f,i) => <div key={i} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, color:'#0f172a' }}><CheckCircle2 size={16} color="#2563eb" />{f}</div>)}
+          </motion.div>
+
+          {/* Annual */}
+          <motion.div initial={{ opacity:0, y:30 }} whileInView={{ opacity:1, y:0 }} viewport={{ once:true }} transition={{ duration:0.5, delay:0.2 }}
+            style={{ background: 'white', borderRadius: 24, padding: '32px 28px', border: '2px solid #059669', display: 'flex', flexDirection: 'column', gap: 20, position: 'relative' }}>
+            <div style={{ position:'absolute', top:-16, left:'50%', transform:'translateX(-50%)', background:'#059669', color:'white', fontSize:12, fontWeight:700, padding:'4px 18px', borderRadius:99, whiteSpace:'nowrap' }}>👑 Best Value</div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Pro Annual</div>
+              <div style={{ fontSize: 48, fontWeight: 800, color: '#0f172a' }}>₹125<span style={{ fontSize:16, color:'#64748b', fontWeight:500 }}>/mo</span></div>
+              <div style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>Billed ₹1,499 yearly · Save ₹900</div>
+            </div>
+            <Link to="/pricing" style={{ display: 'block', textAlign: 'center', padding: '14px 20px', background: '#059669', color: 'white', borderRadius: 12, fontWeight: 700, fontSize: 14, textDecoration: 'none', fontFamily: 'Sora,sans-serif', boxShadow: '0 4px 14px rgba(5,150,105,0.3)' }}>Get Annual Deal</Link>
+            {['Everything in Pro', 'Priority support', 'Dedicated rank hints', 'Study material PDF', '1-on-1 doubt session'].map((f,i) => <div key={i} style={{ display:'flex', alignItems:'center', gap:10, fontSize:14, color:'#0f172a' }}><CheckCircle2 size={16} color="#059669" />{f}</div>)}
+          </motion.div>
+        </div>
+        <div style={{ textAlign:'center', marginTop:32 }}>
+          <Link to="/pricing" style={{ color:'#2563eb', fontWeight:600, fontSize:15, textDecoration:'none' }}>View full pricing details →</Link>
+        </div>
+      </section>
+
+      {/* --- Refer & Earn Teaser --- */}
+      <section className="section section-bg-gray">
+        <div style={{ maxWidth:900, margin:'0 auto', background:'linear-gradient(135deg,#1e40af,#2563eb)', borderRadius:28, padding:'52px 48px', display:'flex', flexWrap:'wrap', gap:40, alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ flex:'1 1 340px' }}>
+            <div style={{ fontSize:13, fontWeight:700, color:'#93c5fd', marginBottom:12, letterSpacing:'0.06em', textTransform:'uppercase' }}>Refer & Earn Program</div>
+            <h2 style={{ color:'white', textAlign:'left', fontSize:'clamp(26px,4vw,38px)', marginBottom:16 }}>Share & Get Free Pro Access 🎁</h2>
+            <p style={{ color:'rgba(255,255,255,0.8)', fontSize:16, lineHeight:1.7 }}>Refer a friend and both of you get free Pro weeks. The more you refer, the more you earn — up to 6 months free!</p>
+          </div>
+          <div style={{ flex:'1 1 260px', display:'flex', flexDirection:'column', gap:16 }}>
+            {[{ n:'1 referral', r:'1 Week Free Pro' }, { n:'3 referrals', r:'1 Month Free Pro' }, { n:'5 referrals', r:'3 Months Free Pro' }].map((r,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', justify:'space-between', background:'rgba(255,255,255,0.12)', borderRadius:12, padding:'12px 18px', gap:16 }}>
+                <span style={{ fontSize:14, color:'rgba(255,255,255,0.8)', fontWeight:500 }}>{r.n}</span>
+                <span style={{ fontSize:14, fontWeight:700, color:'white', marginLeft:'auto' }}>{r.r}</span>
+              </div>
+            ))}
+            <Link to="/refer" style={{ display:'block', textAlign:'center', background:'white', color:'#2563eb', borderRadius:12, padding:'13px 20px', fontWeight:700, fontSize:14, textDecoration:'none', fontFamily:'Sora,sans-serif' }}>Start Referring Now →</Link>
+          </div>
+        </div>
+      </section>
+
       {/* --- CTA Section --- */}
       <section className="cta-section">
         <div className="cta-content">
@@ -573,7 +708,8 @@ export default function LandingPage() {
               <ul>
                 <li><a href="#features">Features</a></li>
                 <li><a href="/predictor">College Predictor</a></li>
-                <li><a href="#">Pricing</a></li>
+                <li><a href="/pricing">Pricing</a></li>
+                <li><a href="/refer">Refer &amp; Earn 🎁</a></li>
               </ul>
             </div>
             <div className="link-group">
