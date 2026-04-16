@@ -267,7 +267,7 @@ export default function LandingPage() {
             <a href="/predictor" className="nav-link">Rank Predictor</a>
             <Link to="/refer" className="nav-link" style={{ color: '#f59e0b', fontWeight: 700 }}>🎁 Refer & Earn</Link>
             <Link to="/login" className="btn btn-outline" style={{ marginLeft: 16, padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Sign In</Link>
-            <Link to="/login" className="btn btn-primary" style={{ padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Start Free Trial</Link>
+            <Link to="/signup" className="btn btn-primary" style={{ padding: '8px 20px', textDecoration: 'none', display: 'inline-block' }}>Start Free Trial</Link>
           </div>
 
           <button className="mobile-menu-btn" style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer' }} onClick={() => setMobileMenuOpen(true)}>
@@ -296,7 +296,7 @@ export default function LandingPage() {
             </div>
             <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <Link to="/login" className="btn btn-outline" style={{ width: '100%', textDecoration: 'none', textAlign: 'center' }} onClick={() => setMobileMenuOpen(false)}>Sign In</Link>
-              <Link to="/login" className="btn btn-primary" style={{ width: '100%', textDecoration: 'none', textAlign: 'center' }} onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
+              <Link to="/signup" className="btn btn-primary" style={{ width: '100%', textDecoration: 'none', textAlign: 'center' }} onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
             </div>
           </motion.div>
         )}
@@ -322,7 +322,7 @@ export default function LandingPage() {
               Practice PYQs, take real-time mock tests, analyze performance, and predict your rank & college — all in one modern platform.
             </motion.p>
             <motion.div variants={fadeInUp} className="hero-buttons">
-              <Link to="/login" className="btn btn-primary" style={{ padding: '16px 32px', fontSize: 16, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Link to="/signup" className="btn btn-primary" style={{ padding: '16px 32px', fontSize: 16, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 Start Free Mock Test <ArrowRight size={18} />
               </Link>
               <a href="#features" style={{ textDecoration: 'none' }}>
@@ -688,7 +688,7 @@ export default function LandingPage() {
         <div className="cta-content">
           <h2 style={{ fontSize: 'clamp(36px, 5vw, 48px)' }}>Ready to crack EAMCET?</h2>
           <p>Join over 10,000+ students predicting their success and mastering the exam.</p>
-          <Link to="/login" className="btn" style={{ background: 'white', color: '#2563eb', padding: '16px 36px', fontSize: 18, textDecoration: 'none', display: 'inline-block' }}>
+          <Link to="/signup" className="btn" style={{ background: 'white', color: '#2563eb', padding: '16px 36px', fontSize: 18, textDecoration: 'none', display: 'inline-block' }}>
             Start Free Practice
           </Link>
         </div>

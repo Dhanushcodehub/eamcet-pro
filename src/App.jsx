@@ -212,8 +212,12 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<>
-          <SEO title="Sign In" description="Securely log in to your EAMCET Pro account to access mock tests and analytics." path="/login" />
-          <AuthPage user={user} onLogin={u => { setUser(u); navigate("/dashboard"); }} />
+          <SEO title="Sign In to Your Account - EAMCET Pro" description="Securely log in to your EAMCET Pro account to access mock tests and analytics." path="/login" />
+          <AuthPage user={user} onLogin={u => { setUser(u); navigate("/dashboard"); }} defaultMode="login" />
+        </>} />
+        <Route path="/signup" element={<>
+          <SEO title="Create Your Account - EAMCET Pro" description="Join thousands of EAMCET aspirants. Create your free account and start practicing with official mock tests." path="/signup" />
+          <AuthPage user={user} onLogin={u => { setUser(u); navigate("/dashboard"); }} defaultMode="signup" />
         </>} />
         <Route path="/verify" element={<>
           <SEO title="Verify Email" description="Confirm your email address to activate your EAMCET Pro account." path="/verify" />

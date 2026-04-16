@@ -12,8 +12,8 @@ import GlobalStyles from "../components/GlobalStyles";
 import NotificationBar from "../components/NotificationBar";
 import Field from "../components/Field";
 
-function AuthPage({ user, onLogin }) {
-  const [mode, setMode] = useState("login"); // "login" | "signup"
+function AuthPage({ user, onLogin, defaultMode = "login" }) {
+  const [mode, setMode] = useState(defaultMode); // "login" | "signup"
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");

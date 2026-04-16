@@ -17,7 +17,6 @@ Allow: /refer
 Allow: /syllabus
 
 # Disallow admin/technical pages
-Disallow: /login
 Disallow: /verify
 Disallow: /exam
 Disallow: /analysis
