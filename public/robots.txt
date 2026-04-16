@@ -1,13 +1,26 @@
 # EAMCET Pro Robots.txt
 # Optimized for SEO and Search Engine Discoverability
+# Updated: 2026-04-16
 
 User-agent: *
 Allow: /
+
+# Allow all main pages
 Allow: /dashboard
 Allow: /papers
+Allow: /predictor
+Allow: /flashcards
 Allow: /leaderboard
-Allow: /syllabus
+Allow: /pricing
 Allow: /progress
+Allow: /refer
+Allow: /syllabus
+
+# Disallow admin/technical pages
+Disallow: /login
+Disallow: /verify
+Disallow: /exam
+Disallow: /analysis
 
 # Sitemaps
 Sitemap: https://eamcetpro.tech/sitemap.xml
