@@ -3,45 +3,37 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
-  linkWithPhoneNumber,
-  RecaptchaVerifier,
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
-import { Mail, ArrowLeft, CheckCircle2, MessageSquare, Phone } from "lucide-react";
+import { Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
 import GlobalStyles from "../components/GlobalStyles";
 import NotificationBar from "../components/NotificationBar";
 import Field from "../components/Field";
 
 function AuthPage({ user, onLogin }) {
-  const [mode, setMode] = useState("login"); // "login" | "signup" | "request_otp" | "enter_otp"
+  const [mode, setMode] = useState("login"); // "login" | "signup"
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  // Detect unverified state on mount/change + Referral tracking
+  // Referral tracking
   useEffect(() => {
     // Track referral codes
     const urlParams = new URLSearchParams(window.location.search);
     const refCode = urlParams.get('ref');
     if (refCode) {
       sessionStorage.setItem('eamcet_referral_code', refCode);
+      setReferralCode(refCode);
+    } else {
+      const stored = sessionStorage.getItem('eamcet_referral_code');
+      if (stored) setReferralCode(stored);
     }
-
-    if (user) {
-      const hasPhone = user.phoneVerified;
-      if (!user.emailVerified && !hasPhone) {
-        if (!mode.includes("otp")) {
-          setMode("request_otp");
-        }
-      }
-    }
-  }, [user, mode]);
+  }, []);
 
   const handle = async () => {
     if (!email || !pwd) { setErr("Please fill all fields"); return; }
@@ -55,31 +47,16 @@ function AuthPage({ user, onLogin }) {
         let cred;
         if (mode === "login") {
           cred = await signInWithEmailAndPassword(window._firebaseAuth, email, pwd);
-          
-          const hasPhone = !!cred.user.phoneNumber;
-          if (!cred.user.emailVerified && !hasPhone) {
-            setMode("request_otp");
-            setLoading(false);
-            // We notify App.jsx so it knows we have a 'needsVerification' user
-            onLogin({
-              uid: cred.user.uid,
-              name: cred.user.displayName || email.split("@")[0],
-              email: cred.user.email,
-              emailVerified: false,
-              phoneVerified: false
-            });
-            return;
-          }
-          
           onLogin({
             uid: cred.user.uid,
             name: cred.user.displayName || email.split("@")[0],
             email: cred.user.email,
-            emailVerified: cred.user.emailVerified,
-            phoneVerified: hasPhone
           });
         } else {
           // Signup Flow
+          if (referralCode.trim()) {
+            sessionStorage.setItem('eamcet_referral_code', referralCode.trim());
+          }
           cred = await createUserWithEmailAndPassword(window._firebaseAuth, email, pwd);
           await updateProfile(cred.user, { displayName: name });
           
@@ -87,11 +64,7 @@ function AuthPage({ user, onLogin }) {
             uid: cred.user.uid,
             name: name || email.split("@")[0],
             email: cred.user.email,
-            emailVerified: false,
-            phoneVerified: false
           });
-          
-          setMode("request_otp");
           setPwd("");
           setLoading(false);
           return;
@@ -99,7 +72,7 @@ function AuthPage({ user, onLogin }) {
       } else {
         await new Promise(r => setTimeout(r, 900));
         const uid = email.replace(/[^a-z0-9]/gi, "_");
-        onLogin({ uid, name: name || email.split("@")[0], email, emailVerified: true });
+        onLogin({ uid, name: name || email.split("@")[0], email });
       }
     } catch (e) {
       console.error("[Auth Error]", e.code, e.message);
@@ -114,56 +87,6 @@ function AuthPage({ user, onLogin }) {
         "auth/network-request-failed": "Network error. Please check your internet connection."
       };
       setErr(messages[e.code] || "Authentication failed. Please try again.");
-    }
-    setLoading(false);
-  };
-
-  const setupCaptcha = () => {
-    if (!window.recaptchaVerifier && window._firebaseAuth) {
-      window.recaptchaVerifier = new RecaptchaVerifier(window._firebaseAuth, 'recaptcha-container', {
-        size: 'invisible'
-      });
-    }
-  };
-
-  const handleSendOTP = async () => {
-    if (!phone || phone.length < 10) { setErr("Please enter a valid phone number."); return; }
-    setLoading(true); setErr("");
-    try {
-      setupCaptcha();
-      const userToLink = window._firebaseAuth.currentUser;
-      if (!userToLink) throw new Error("Authentication failed. Please login again.");
-      
-      const formattedPhone = phone.startsWith("+") ? phone : `+91${phone}`;
-      window.confirmationResult = await linkWithPhoneNumber(userToLink, formattedPhone, window.recaptchaVerifier);
-      setMode("enter_otp");
-    } catch (e) {
-      console.error(e);
-      setErr(e.message || "Failed to send OTP. Please try again.");
-      if (window.recaptchaVerifier) {
-         window.recaptchaVerifier.clear();
-         window.recaptchaVerifier = null;
-      }
-    }
-    setLoading(false);
-  };
-
-  const handleVerifyOTP = async () => {
-    if (!otp || otp.length < 6) { setErr("Enter valid 6-digit OTP"); return; }
-    setLoading(true); setErr("");
-    try {
-      await window.confirmationResult.confirm(otp);
-      const verifiedUser = window._firebaseAuth.currentUser;
-      onLogin({
-        uid: verifiedUser.uid,
-        name: verifiedUser.displayName || email.split("@")[0],
-        email: verifiedUser.email,
-        emailVerified: verifiedUser.emailVerified,
-        phoneVerified: true
-      });
-    } catch (e) {
-      console.error(e);
-      setErr("Invalid OTP. Please try again.");
     }
     setLoading(false);
   };
@@ -215,74 +138,8 @@ function AuthPage({ user, onLogin }) {
       <div className="auth-decorative" style={{ position: "absolute", bottom: "-150px", left: "-100px", width: 500, height: 500, borderRadius: "50%", border: "1.5px solid rgba(0, 21, 42, 0.05)", pointerEvents: "none" }} />
 
       <div className="auth-card" style={{ position: "relative", overflow: "hidden" }}>
-        
-        <div id="recaptcha-container"></div>
-        {mode === "request_otp" || mode === "enter_otp" ? (
-          <div style={{ textAlign: "center", padding: "20px 10px", animation: "fcFadeUp 0.4s ease" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#eff6ff", margin: "0 auto 24px", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563eb", boxShadow: "0 8px 16px rgba(37,99,235,0.12)", position: "relative" }}>
-              {mode === "request_otp" ? <Phone size={30} strokeWidth={2.5} /> : <MessageSquare size={30} strokeWidth={2.5} />}
-              <div style={{ position: "absolute", bottom: -2, right: -4, background: "#10b981", borderRadius: "50%", border: "2px solid #fff", color: "#fff" }}>
-                <CheckCircle2 size={18} />
-              </div>
-            </div>
-            
-            <h2 style={{ margin: "0 0 12px", fontSize: 24, fontWeight: 800, color: "#0f172a", letterSpacing: -0.5 }}>
-               {mode === "request_otp" ? "Verify Your Phone" : "Enter OTP"}
-            </h2>
-            
-            <p style={{ margin: "0 0 24px", fontSize: 14, color: "#475569", lineHeight: 1.6 }}>
-               {mode === "request_otp" 
-                 ? "We need to verify your identity. Enter your phone number to receive an OTP."
-                 : `We sent a 6-digit verification code to ${phone}.`
-               }
-            </p>
-
-            <NotificationBar message={err} type="error" onClose={() => setErr("")} />
-
-            <div style={{ marginBottom: 24, textAlign: "left" }}>
-              {mode === "request_otp" ? (
-                <Field 
-                  label="Phone Number" 
-                  value={phone} 
-                  onChange={setPhone} 
-                  placeholder="9876543210" 
-                  type="tel"
-                  hint="We default to +91 (India) if no code is provided."
-                />
-              ) : (
-                <Field 
-                  label="6-Digit OTP" 
-                  value={otp} 
-                  onChange={setOtp} 
-                  placeholder="123456" 
-                  type="number"
-                />
-              )}
-            </div>
-
-            <button 
-              onClick={mode === "request_otp" ? handleSendOTP : handleVerifyOTP} 
-              disabled={loading}
-              className="btn-primary" 
-              style={{ marginBottom: 16 }}
-            >
-               {loading ? "Processing..." : mode === "request_otp" ? "Send OTP →" : "Verify OTP →"}
-            </button>
-
-            <button 
-              onClick={async () => {
-                if(window._firebaseAuth) await signOut(window._firebaseAuth);
-                onLogin(null); // Clear local state
-                setMode("login");
-              }} 
-              style={{ background: "transparent", color: "#64748b", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 600, width: "100%", cursor: "pointer", fontFamily: "'Sora', sans-serif" }}
-            >
-              <ArrowLeft size={16} /> Sign Out / Try Another Account
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Logo */}
+        <>
+          {/* Logo */}
             <div style={{ textAlign: "center", marginBottom: 40 }}>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                 <div style={{ width: 42, height: 42, borderRadius: 12, background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "#ffffff" }}>E</div>
@@ -326,6 +183,9 @@ function AuthPage({ user, onLogin }) {
                   hint={pwd && pwd.length < 6 ? "Minimum 6 characters required" : pwd.length >= 6 ? "Password looks good" : ""}
                   hintType={pwd.length >= 6 ? "success" : "error"}
                 />
+                {mode === "signup" && (
+                  <Field label="Referral Code (Optional)" value={referralCode} onChange={setReferralCode} placeholder="EAMCET-XXXXXX" />
+                )}
               </div>
 
               <NotificationBar message={err} type="error" onClose={() => setErr("")} />
@@ -359,7 +219,6 @@ function AuthPage({ user, onLogin }) {
               Quiet Focus Interface • Secure Data Sync
             </p>
           </>
-        )}
       </div>
     </div>
   );

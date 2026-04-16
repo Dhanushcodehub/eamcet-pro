@@ -10,4 +10,4 @@ Allow: /syllabus
 Allow: /progress
 
 # Sitemaps
-Sitemap: https://eamcetpro.vercel.app/sitemap.xml
+Sitemap: https://eamcetpro.tech/sitemap.xml

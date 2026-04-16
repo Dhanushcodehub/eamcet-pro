@@ -182,7 +182,7 @@ function Dashboard({ user, plan = 'free', streak, accuracy, totalPapers, session
     : 0;
 
   return (
-    <div style={{ position: "relative", ...(user ? { minHeight: "80vh" } : { height: "calc(100vh - 100px)", overflow: "hidden" }) }}>
+    <main style={{ position: "relative", ...(user ? { minHeight: "80vh" } : { height: "calc(100vh - 100px)", overflow: "hidden" }) }}>
       {!user && (
         <div style={{
           position: "absolute", inset: -16, zIndex: 10,
@@ -365,7 +365,7 @@ function Dashboard({ user, plan = 'free', streak, accuracy, totalPapers, session
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

@@ -10,7 +10,8 @@ function ExamPage({ paper, onSubmit, onExit }) {
   // Guard: no questions yet
   if (allQs.length === 0) {
     return (
-      <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 32, textAlign: "center" }}>
+      <main style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 32, textAlign: "center" }}>
+        <h1 style={{ position: 'absolute', width: '1px', height: '1px', padding: '0', margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', border: '0' }}>TS EAMCET Mock Test Practice - {paper.label}</h1>
         <div style={{ width:64, height:64, borderRadius:18, background:'linear-gradient(135deg,#eff6ff,#dbeafe)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:8 }}>
           <FileText size={32} color="#2563eb" />
         </div>
@@ -21,7 +22,7 @@ function ExamPage({ paper, onSubmit, onExit }) {
         <button onClick={onExit} style={{ marginTop: 8, padding: "10px 28px", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", border: "none", borderRadius: 10, color: "#ffffff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
           ← Back to Papers
         </button>
-      </div>
+      </main>
     );
   }
 
@@ -74,7 +75,8 @@ function ExamPage({ paper, onSubmit, onExit }) {
   const diffColors = { Easy: { bg: "#f1f5f9", color: "#10b981" }, Medium: { bg: "#f1f5f9", color: "#f59e0b" }, Hard: { bg: "#f1f5f9", color: "#f87171" } };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column" }}>
+    <main style={{ minHeight: "100vh", background: "#f8faff", fontFamily: "'Sora',sans-serif", display: "flex", flexDirection: "column" }}>
+      <h1 style={{ position: 'absolute', width: '1px', height: '1px', padding: '0', margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', border: '0' }}>TS EAMCET Live Mock Test - {paper.label}</h1>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
         * { box-sizing: border-box; }
@@ -101,11 +103,14 @@ function ExamPage({ paper, onSubmit, onExit }) {
         @media (max-width: 600px) {
           .exam-main { padding: 16px 12px; }
           .opt-btn { font-size: 13px; padding: 13px 15px; gap: 10px; }
+          .exam-header { flex-direction: column !important; align-items: flex-start !important; height: auto !important; padding: 14px 16px !important; gap: 12px !important; }
+          .exam-header-right { width: 100% !important; justify-content: space-between !important; }
+          .q-nav-actions { flex-wrap: wrap !important; gap: 8px !important; }
         }
       `}</style>
 
       {/* Top Header */}
-      <div style={{ background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 62, flexShrink: 0 }}>
+      <div className="exam-header" style={{ background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 62, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#2563eb,#1d4ed8)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <PenTool size={16} color="#ffffff" />
@@ -119,14 +124,14 @@ function ExamPage({ paper, onSubmit, onExit }) {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="exam-header-right" style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 18px", borderRadius: 12, border: `1.5px solid ${isLow ? "#64748b" : "#64748b"}`, background: isLow ? "#e2e8f0" : "#e2e8f0" }}>
             <Timer size={15} color={isLow ? "#f87171" : "#3b82f6"} />
             <span style={{ fontFamily: "'Space Mono',monospace", fontSize: 19, fontWeight: 700, color: isLow ? "#f87171" : "#3b82f6", letterSpacing: 1 }}>
               {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
             </span>
           </div>
-          <button onClick={() => setShowConfirm(true)} style={{ padding: "9px 20px", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", border: "none", borderRadius: 10, color: "#ffffff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", letterSpacing: 0.2, boxShadow: "0 4px 12px rgba(37,99,235,0.2)" }}>Submit Paper</button>
+          <button onClick={() => setShowConfirm(true)} style={{ padding: "9px 20px", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", border: "none", borderRadius: 10, color: "#ffffff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Sora',sans-serif", letterSpacing: 0.2, boxShadow: "0 4px 12px rgba(37,99,235,0.2)", whiteSpace: "nowrap" }}>Submit</button>
         </div>
       </div>
 
@@ -171,7 +176,7 @@ function ExamPage({ paper, onSubmit, onExit }) {
           </div>
 
           {/* Navigation */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="q-nav-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button onClick={() => setCurrent(c => Math.max(0, c - 1))} disabled={current === 0}
               style={{ padding: "10px 22px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "transparent", color: current === 0 ? "#cbd5e1" : "#0f172a", cursor: current === 0 ? "not-allowed" : "pointer", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 600, transition: "all 0.15s" }}>
               ← Prev
@@ -288,7 +293,7 @@ function ExamPage({ paper, onSubmit, onExit }) {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
 

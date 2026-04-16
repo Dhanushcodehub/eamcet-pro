@@ -412,7 +412,7 @@ function Shell({ user, plan = 'free', onLogout, children }) {
       `}</style>
 
       {/* Sidebar */}
-      <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <div className="brand-container">
             <div className="brand-logo">E</div>
@@ -516,7 +516,7 @@ function Shell({ user, plan = 'free', onLogout, children }) {
             </button>
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* Main Content */}
       <div className="main-content" onClick={() => { if (mobileMenuOpen) setMobileMenuOpen(false) }}>

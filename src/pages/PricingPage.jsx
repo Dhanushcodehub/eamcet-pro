@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
+import SEO from '../components/SEO.jsx';
 import { CheckCircle2, X, Zap, Shield, Gift, ChevronDown, ChevronUp, Tag, Star, Clock, Flame, Crown, PartyPopper } from 'lucide-react';
 
 // ─── Razorpay Config ────────────────────────────────────────────────────────
 // Key ID is safe to use on the frontend (public).
 // Key Secret (0AeXhZ0QjKM93DD5qX8eA1oo) must ONLY be used server-side for
 // order creation & payment verification — never expose it in frontend code.
-const RAZORPAY_KEY_ID = 'rzp_test_ScH5tUb9BE7TJf';
+const RAZORPAY_KEY_ID = 'rzp_live_SdosE3MlKgGqfR';
 
 const VALID_COUPONS = {
   'EAMCET30': { discount: 30, label: '30% off', type: 'percent' },
@@ -374,8 +374,7 @@ export default function PricingPage({ user, plan, onUpgrade }) {
     .faq-q { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; cursor: pointer; font-weight: 600; font-size: 16px; gap: 16px; }
     .faq-a { padding: 0 24px 20px; color: #475569; font-size: 15px; line-height: 1.7; }
     
-    /* Test keys note */
-    .test-mode-badge { display: inline-flex; align-items: center; gap: 6px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: 700; margin-top: 12px; }
+
 
     @media (max-width: 768px) {
       .plans-grid { grid-template-columns: 1fr; }
@@ -384,20 +383,21 @@ export default function PricingPage({ user, plan, onUpgrade }) {
   `;
 
   return (
-    <div className="pricing-page">
-      <Helmet>
-        <title>Pricing — EAMCET Pro | Crack EAMCET at ₹199/month</title>
-        <meta name="description" content="Get unlimited EAMCET practice papers, mock tests, rank predictor, and analytics. Start with a 7-day free trial." />
-      </Helmet>
+    <main className="pricing-page">
+      <SEO 
+        title="Pricing — Crack EAMCET at ₹199/month" 
+        description="Get unlimited EAMCET practice papers, mock tests, rank predictor, and analytics. Start with a 7-day free trial." 
+        path="/pricing" 
+      />
       <style dangerouslySetInnerHTML={{ __html: styles }} />
 
       {/* Hero */}
-      <div className="pricing-hero">
+      <section className="pricing-hero">
         <h1>Simple, Honest <span>Pricing</span></h1>
         <p>Start free. Upgrade when you're ready to go full throttle. Cancel anytime.</p>
 
         {/* Toggle */}
-        <div>
+        <div style={{ marginTop: 32 }}>
           <div className="billing-toggle">
             <button className={`toggle-btn ${billing === 'monthly' ? 'active' : 'inactive'}`} onClick={() => setBilling('monthly')}>
               Monthly
@@ -405,18 +405,12 @@ export default function PricingPage({ user, plan, onUpgrade }) {
             <button className={`toggle-btn ${billing === 'annual' ? 'active' : 'inactive'}`} onClick={() => setBilling('annual')}>
               Annual <span className="annual-save-badge">Save ₹900</span>
             </button>
-          </div>
-        </div>
-        <div className="test-mode-badge">
-          <Zap size={12} /> Test Mode Active — Use Razorpay test cards to pay
-        </div>
-        <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>
-          Test card: <strong>4111 1111 1111 1111</strong> · Any future expiry · Any CVV
         </div>
       </div>
+    </section>
 
       {/* Plans */}
-      <div style={{ padding: '60px 0 0' }}>
+      <section style={{ padding: '60px 0 0' }}>
         <div className="plans-grid">
           {PLANS.map((plan) => {
             const isMonthly = billing === 'monthly';
@@ -542,7 +536,7 @@ export default function PricingPage({ user, plan, onUpgrade }) {
             ))}
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

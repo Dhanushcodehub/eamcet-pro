@@ -2,7 +2,7 @@
 
 > A modern, full-featured exam preparation platform for EAMCET (Engineering, Agriculture and Medical Common Entrance Test) aspirants — built with React, Vite, and Firebase.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-eamcetpro.vercel.app-blue?style=for-the-badge)](https://eamcetpro.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-eamcetpro.tech-blue?style=for-the-badge)](https://eamcetpro.tech)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?style=for-the-badge&logo=react)](https://reactjs.org/)
 [![Firebase](https://img.shields.io/badge/Firebase-10.12-FFCA28?style=for-the-badge&logo=firebase)](https://firebase.google.com/)
 [![Vite](https://img.shields.io/badge/Vite-5.2-646CFF?style=for-the-badge&logo=vite)](https://vitejs.dev/)
@@ -127,7 +127,7 @@ eamcet-pro/
 
 ## 🌐 Deployment
 
-The official version of **EAMCET Pro** is hosted at [eamcetpro.vercel.app](https://eamcetpro.vercel.app).
+The official version of **EAMCET Pro** is hosted at [eamcetpro.tech](https://eamcetpro.tech).
 
 To deploy your own instance:
 

@@ -144,7 +144,7 @@ export default function PredictorPage() {
   };
 
   return (
-    <div style={{ fontFamily: "'Sora', sans-serif", paddingBottom: 40 }}>
+    <main style={{ fontFamily: "'Sora', sans-serif", paddingBottom: 40 }}>
       <style>{`
         @keyframes prFadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
         .pr-fade { animation: prFadeUp 0.32s ease both; }
@@ -500,7 +500,7 @@ export default function PredictorPage() {
           )}
         </div>
       )}
-    </div>
+    </main>
   );
 }
 

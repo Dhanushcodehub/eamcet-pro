@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
-import { Helmet } from 'react-helmet-async';
+import SEO from '../components/SEO.jsx';
 import {
   ArrowRight, CheckCircle2, BarChart3, Target,
   BookOpen, Trophy, Zap, BrainCircuit,
@@ -242,12 +242,12 @@ export default function LandingPage() {
   `;
 
   return (
-    <div className="landing-page">
-      <Helmet>
-        <title>EAMCET Pro | Smart Preparation Platform</title>
-        <meta name="description" content="Practice PYQs, take mock tests, analyze performance, and predict your rank for TS EAMCET exams. The ultimate personalized study companion." />
-        <meta name="keywords" content="EAMCET preparation platform, EAMCET mock test online, EAMCET rank predictor, TS EAMCET" />
-      </Helmet>
+    <main className="landing-page">
+      <SEO 
+        title="Smart Preparation Platform" 
+        description="Practice PYQs, take mock tests, analyze performance, and predict your rank for TS EAMCET exams. The ultimate personalized study companion." 
+        path="/" 
+      />
       <style dangerouslySetInnerHTML={{ __html: styles }} />
 
       {/* --- Navbar --- */}
@@ -739,6 +739,6 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-    </div>
+    </main>
   );
 }

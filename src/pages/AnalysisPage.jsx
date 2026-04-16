@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Check, X, BarChart2, Target, Atom, FlaskConical, Compass, TrendingUp, CheckCircle2, Trophy } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Check, X, BarChart2, Target, Atom, FlaskConical, Compass, TrendingUp, 
+  CheckCircle2, Trophy, Zap, Lock, MapPin, Building2, Crown, Sparkles, 
+  ArrowLeft, ChevronRight, Layout, Info
+} from "lucide-react";
+import { predictRank, CATEGORIES, CATEGORY_MULTIPLIERS, COLLEGES, CATEGORY_TO_KEY } from "../data/predictorData.js";
 
 const subjectColors = {
   Physics:     "#2563eb",
@@ -8,7 +14,20 @@ const subjectColors = {
   Biology:     "#ec4899",
 };
 
-function AnalysisPage({ data, onBack }) {
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { 
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 }
+};
+
+function AnalysisPage({ data, plan = 'free', onUpgrade, onBack }) {
   const {
     correct, total, subjectBreakdown = {}, questionResults = [],
     timeTaken = 0, paperLabel = "Paper"
@@ -17,6 +36,9 @@ function AnalysisPage({ data, onBack }) {
   const [tab, setTab] = useState("overview");
   const [qFilter, setQFilter] = useState("all");
   const [expandedQ, setExpandedQ] = useState(null);
+  const [predCategory, setPredCategory] = useState("OC");
+
+  const isPro = plan === 'pro' || plan === 'annual';
 
   const wrong   = questionResults.filter(q => !q.isCorrect && q.userAnswer !== undefined).length;
   const skipped = questionResults.filter(q => q.userAnswer === undefined).length;
@@ -35,112 +57,139 @@ function AnalysisPage({ data, onBack }) {
   });
   const topicEntries = Object.entries(topicMap).sort((a, b) => (b[1].correct / b[1].total) - (a[1].correct / a[1].total));
 
-  // Score ring
+  // Score ring variables
   const R = 54, C = 2 * Math.PI * R;
   const filled = C * (accuracy / 100);
   const scoreColor = accuracy >= 70 ? "#10b981" : accuracy >= 50 ? "#f59e0b" : "#f87171";
-  const scoreGrad  = accuracy >= 70 ? ["#10b981","#059669"] : accuracy >= 50 ? ["#f59e0b","#d97706"] : ["#f87171","#ef4444"];
-
-  // Filtered questions
+  
   const filteredQs = (qFilter === "all" ? questionResults
     : qFilter === "correct"  ? questionResults.filter(q => q.isCorrect)
     : qFilter === "wrong"    ? questionResults.filter(q => !q.isCorrect && q.userAnswer !== undefined)
     : questionResults.filter(q => q.userAnswer === undefined));
 
   const subjects = [
-    { name: "Physics",     icon: <Atom size={14} color={subjectColors.Physics} />,     color: subjectColors.Physics },
-    { name: "Chemistry",   icon: <FlaskConical size={14} color={subjectColors.Chemistry} />, color: subjectColors.Chemistry },
-    { name: "Mathematics", icon: <Compass size={14} color={subjectColors.Mathematics} />,    color: subjectColors.Mathematics },
+    { name: "Physics",     icon: <Atom size={16} />, color: subjectColors.Physics },
+    { name: "Chemistry",   icon: <FlaskConical size={16} />, color: subjectColors.Chemistry },
+    { name: "Mathematics", icon: <Compass size={16} />, color: subjectColors.Mathematics },
   ];
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div className="an-container" style={{ maxWidth: 940, margin: "0 auto", padding: "0 10px 40px" }}>
       <style>{`
-        @keyframes anFadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        .an-fade  { animation: anFadeUp 0.36s ease both; }
-        .an-f1{animation-delay:0.04s} .an-f2{animation-delay:0.09s} .an-f3{animation-delay:0.13s}
-        .an-f4{animation-delay:0.17s} .an-f5{animation-delay:0.21s} .an-f6{animation-delay:0.25s}
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Space+Mono:wght@700&display=swap');
+        
+        .an-container * { font-family: 'Sora', sans-serif; }
+        .mono { font-family: 'Space Mono', monospace !important; }
+        
+        .premium-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 24px; box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05); }
+        .stat-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .stat-card:hover { transform: translateY(-4px); }
+        .segmented-control { position: relative; display: flex; background: #f1f5f9; padding: 4px; border-radius: 16px; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+        .segmented-control::-webkit-scrollbar { display: none; }
+        .segment-btn { position: relative; z-index: 1; padding: 10px 22px; border: none; background: transparent; cursor: pointer; font-family: 'Sora', sans-serif; font-size: 13.5px; font-weight: 700; color: #64748b; transition: color 0.2s; white-space: nowrap; }
+        .segment-btn.active { color: #0f172a; }
+        .topic-progress-bg { height: 8px; background: #f1f5f9; border-radius: 10px; overflow: hidden; position: relative; }
+        .topic-progress-fill { height: 100%; border-radius: 10px; }
 
-        .an-tab-btn { padding:9px 18px; borderRadius:10px; border:none; cursor:pointer; font-family:'Sora',sans-serif; font-size:13px; font-weight:600; transition:all 0.15s; }
-        .an-tab-btn.active  { background:#2563eb; color:#fff; }
-        .an-tab-btn:not(.active) { background:transparent; color:#64748b; }
-        .an-tab-btn:not(.active):hover { background:#f1f5f9; }
-
-        .an-topic-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
-        @media(max-width:600px){ .an-topic-grid { grid-template-columns:1fr; } }
+        @media (max-width: 640px) {
+          .an-container { padding: 0 16px 40px !important; }
+          .premium-card { padding: 20px !important; border-radius: 20px; }
+          .score-header { flex-direction: column; align-items: flex-start !important; gap: 16px; }
+          .score-overview-flex { flex-direction: column; align-items: center !important; text-align: center; gap: 24px !important; }
+          .stat-grid { width: 100%; gap: 10px !important; }
+          .stat-card { padding: 12px 14px !important; }
+          .segment-btn { padding: 8px 10px; font-size: 11px; width: 100%; text-align: center; }
+          .segmented-control { width: 100% !important; display: grid !important; grid-template-columns: repeat(2, 1fr); gap: 4px; background: #f1f5f9; padding: 4px; height: auto; }
+          .segment-btn.active { color: #0f172a; }
+          h1 { font-size: 22px !important; }
+          .college-card { flex-direction: column !important; align-items: flex-start !important; padding: 16px !important; }
+          .college-rank { text-align: left !important; border-top: 1px solid #f1f5f9; padding-top: 12px; width: 100%; }
+        }
       `}</style>
 
       {/* Header */}
-      <div className="an-fade an-f1" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24, flexWrap:"wrap", gap:12 }}>
+      <motion.div initial="hidden" animate="visible" variants={itemVariants} className="score-header"
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, marginTop: 10 }}>
         <div>
-          <h1 style={{ margin:"0 0 4px", color:"#0f172a", fontSize:22, fontWeight:700, letterSpacing:-0.4 }}>Analysis</h1>
-          <p style={{ margin:0, color:"#64748b", fontSize:13 }}>{paperLabel}</p>
+          <h1 style={{ margin: "0 0 6px", color: "#0f172a", fontSize: 28, fontWeight: 800, letterSpacing: -0.8, display:"flex", alignItems:"center", gap:12 }}>
+            Performance <span style={{ color: "#2563eb" }}>Analysis</span>
+          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b", fontSize: 13.5, fontWeight: 600 }}>
+            <Layout size={14} /> {paperLabel}
+          </div>
         </div>
-        <button onClick={onBack} style={{ padding:"8px 20px", border:"1.5px solid #e2e8f0", borderRadius:10, background:"transparent", color:"#475569", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'Sora',sans-serif", transition:"all 0.15s" }}>
-          ← Back to Papers
+        <button onClick={onBack} 
+          style={{ padding: "10px 20px", border: "1.5px solid #e2e8f0", borderRadius: 14, background: "#fff", color: "#475569", fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "'Sora',sans-serif", display: "flex", alignItems: "center", gap: 8, transition: "all 0.2s" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.transform = "translateX(-2px)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.transform = "translateX(0)"; }}>
+          <ArrowLeft size={16} /> Back to Papers
         </button>
-      </div>
+      </motion.div>
 
       {/* Score Overview */}
-      <div className="an-fade an-f2" style={{ background:"#ffffff", border:"1px solid #e2e8f0", borderRadius:20, padding:"24px 24px", marginBottom:20 }}>
-        <div className="analysis-top" style={{ display:"flex", alignItems:"center", gap:32, flexWrap:"wrap" }}>
-
-          {/* Score Ring */}
-          <div style={{ position:"relative", flexShrink:0 }}>
-            <svg width={132} height={132} style={{ transform:"rotate(-90deg)" }}>
-              <defs>
-                <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor={scoreGrad[0]} />
-                  <stop offset="100%" stopColor={scoreGrad[1]} />
-                </linearGradient>
-              </defs>
-              <circle cx={66} cy={66} r={R} fill="none" stroke="#ffffff" strokeWidth={11} />
-              <circle cx={66} cy={66} r={R} fill="none" stroke="url(#scoreGrad)" strokeWidth={11}
+      <motion.div initial="hidden" animate="visible" variants={containerVariants} className="premium-card" 
+        style={{ padding: "32px", marginBottom: 24, position: "relative", overflow: "hidden" }}>
+        
+        <div style={{ position: "absolute", top: -50, right: -50, width: 200, height: 200, background: "rgba(37,99,235,0.03)", borderRadius: "50%", filter: "blur(40px)" }} />
+        
+        <div className="score-overview-flex" style={{ display: "flex", alignItems: "center", gap: 40, flexWrap: "wrap" }}>
+          {/* Enhanced Score Ring */}
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <div style={{ position:"absolute", inset:0, background: `radial-gradient(circle, ${scoreColor}22 0%, transparent 70%)`, filter: "blur(15px)", borderRadius: "50%" }} />
+            <svg width={140} height={140} style={{ transform: "rotate(-90deg)", position: "relative" }}>
+              <circle cx={70} cy={70} r={R} fill="none" stroke="#f1f5f9" strokeWidth={12} />
+              <motion.circle cx={70} cy={70} r={R} fill="none" stroke={scoreColor} strokeWidth={12}
                 strokeLinecap="round" strokeDasharray={`${C}`}
-                strokeDashoffset={C - filled} style={{ transition:"stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1)" }}
+                initial={{ strokeDashoffset: C }}
+                animate={{ strokeDashoffset: C - filled }}
+                transition={{ duration: 1.5, ease: "easeOut" }}
               />
             </svg>
-            <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontFamily:"'Space Mono',monospace", fontSize:28, fontWeight:700, color:scoreColor, lineHeight:1 }}>{accuracy}%</span>
-              <span style={{ fontSize:9, color:"#94a3b8", marginTop:3, fontWeight:700, textTransform:"uppercase", letterSpacing:1 }}>score</span>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <span className="mono" style={{ fontSize: 32, fontWeight: 700, color: scoreColor, lineHeight: 1 }}>{accuracy}%</span>
+              <span style={{ fontSize: 10, color: "#94a3b8", marginTop: 4, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5 }}>Accuracy</span>
             </div>
           </div>
 
           {/* Stats Grid */}
-          <div style={{ flex:1, minWidth:220 }}>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12, marginBottom:16 }}>
+          <div style={{ flex: 1, minWidth: 260, width: "100%" }}>
+            <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 24 }}>
               {[
-                { label:"Correct",  value:correct,  color:"#10b981", bg:"#ecfdf5" },
-                { label:"Wrong",    value:wrong,    color:"#f87171", bg:"#fef2f2" },
-                { label:"Skipped",  value:skipped,  color:"#f59e0b", bg:"#fffbeb" },
-                { label:"Time",     value:`${mins}:${String(secs).padStart(2,"0")}`, color:"#818cf8", bg:"#f0f4ff" },
-              ].map(({ label, value, color, bg }) => (
-                <div key={label} style={{ background:bg, borderRadius:12, padding:"12px 14px" }}>
-                  <div style={{ fontFamily:"'Space Mono',monospace", fontSize:22, fontWeight:700, color, lineHeight:1 }}>{value}</div>
-                  <div style={{ fontSize:10, color:"#64748b", marginTop:4, fontWeight:600, textTransform:"uppercase", letterSpacing:0.7 }}>{label}</div>
-                </div>
+                { label: "Correct", value: correct, color: "#10b981", bg: "#f0fdf4", icon: <CheckCircle2 size={14} /> },
+                { label: "Wrong", value: wrong, color: "#f87171", bg: "#fef2f2", icon: <X size={14} /> },
+                { label: "Skipped", value: skipped, color: "#f59e0b", bg: "#fffbeb", icon: <Info size={14} /> },
+                { label: "Time", value: `${mins}m ${secs}s`, color: "#6366f1", bg: "#f5f3ff", icon: <BarChart2 size={14} /> },
+              ].map(({ label, value, color, bg, icon }) => (
+                <motion.div key={label} variants={itemVariants} className="stat-card"
+                  style={{ background: bg, borderRadius: 16, padding: "14px 18px", border: "1px solid rgba(0,0,0,0.02)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                    <span style={{ color }}>{icon}</span>
+                    <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</span>
+                  </div>
+                  <div className="mono" style={{ fontSize: 24, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+                </motion.div>
               ))}
             </div>
 
-            {/* Subject bars */}
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {/* Subject Bars */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {subjects.map(({ name, icon, color }) => {
                 const d = subjectBreakdown[name];
                 const pct = d ? Math.round((d.correct / d.total) * 100) : 0;
                 return (
                   <div key={name}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                        {icon}
-                        <span style={{ color:"#334155", fontSize:12, fontWeight:600 }}>{name}</span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ color, opacity: 0.8 }}>{icon}</div>
+                        <span style={{ color: "#1e293b", fontSize: 12.5, fontWeight: 700 }}>{name}</span>
                       </div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        {d && <span style={{ color:"#64748b", fontSize:10 }}>{d.correct}/{d.total}</span>}
-                        <span style={{ fontFamily:"'Space Mono',monospace", fontSize:12, fontWeight:700, color: d ? color : "rgba(37,99,235,0.15)", minWidth:34, textAlign:"right" }}>{d ? `${pct}%` : "—"}</span>
-                      </div>
+                      <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: d ? color : "#cbd5e1" }}>
+                        {d ? `${pct}%` : "—"}
+                      </span>
                     </div>
-                    <div style={{ height:6, background:"#f1f5f9", borderRadius:4, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${color}bb,${color})`, borderRadius:4, boxShadow:`0 0 7px ${color}55`, transition:"width 1s cubic-bezier(0.4,0,0.2,1)" }} />
+                    <div className="topic-progress-bg">
+                      <motion.div className="topic-progress-fill" style={{ background: color }}
+                        initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, delay: 0.5 }} />
                     </div>
                   </div>
                 );
@@ -148,204 +197,318 @@ function AnalysisPage({ data, onBack }) {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Tabs */}
-      <div className="an-fade an-f3" style={{ display:"flex", gap:4, background:"#ffffff", borderRadius:14, padding:4, marginBottom:20, width:"fit-content" }}>
-        {[
-          { id:"overview",  label:"Overview"  },
-          { id:"questions", label:"Questions" },
-          { id:"topics",    label:"Topics"    },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`an-tab-btn ${tab === t.id ? "active" : ""}`}>{t.label}</button>
-        ))}
+      <div style={{ marginBottom: 24 }}>
+        <div className="segmented-control">
+          {[
+            { id: "overview", label: "Overview" },
+            { id: "questions", label: "Solutions" },
+            { id: "topics", label: "Weak Spots" },
+            { id: "prediction", label: "Rank Prediction" },
+          ].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} className={`segment-btn ${tab === t.id ? "active" : ""}`}>
+              {tab === t.id && (
+                <motion.div layoutId="activeTab" 
+                  style={{ position: "absolute", inset: 0, background: "#fff", borderRadius: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.08)", zIndex: -1 }} 
+                />
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {t.id === "prediction" && (isPro ? <Sparkles size={14} color="#f59e0b" /> : <Lock size={12} color="#94a3b8" />)}
+                {t.label}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ── Overview Tab ── */}
-      {tab === "overview" && (
-        <div className="an-fade">
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
-            {subjects.map(({ name, icon, color }) => {
-              const d = subjectBreakdown[name];
-              if (!d) return null;
-              const pct = Math.round((d.correct / d.total) * 100);
-              const scoreColor = pct >= 70 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#f87171";
-              return (
-                <div key={name} style={{ background:"#ffffff", border:"1px solid #e2e8f0", borderRadius:16, padding:"18px 16px", textAlign:"center" }}>
-                  <div style={{ display:"inline-flex", padding:8, background:`${color}14`, border:`1px solid ${color}26`, borderRadius:12, marginBottom:12 }}>{icon}</div>
-                  <div style={{ fontFamily:"'Space Mono',monospace", fontSize:26, fontWeight:700, color:scoreColor, lineHeight:1 }}>{pct}%</div>
-                  <div style={{ fontSize:11, color:"#334155", marginTop:5, fontWeight:600 }}>{name}</div>
-                  <div style={{ fontSize:10, color:"#64748b", marginTop:3 }}>{d.correct}/{d.total} correct</div>
-                  <div style={{ display:"flex", gap:5, justifyContent:"center", marginTop:10, flexWrap:"wrap" }}>
-                    <span style={{ background:"#ecfdf5", color:"#10b981", fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:20 }}>{d.correct}✓</span>
-                    <span style={{ background:"#fef2f2", color:"#f87171", fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:20 }}>{d.wrong||0}✗</span>
-                    <span style={{ background:"#fffbeb", color:"#f59e0b", fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:20 }}>{d.skipped||0}–</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Performance note */}
-          <div style={{ marginTop:16, padding:"14px 18px", background: accuracy >= 70 ? "#ecfdf5" : accuracy >= 50 ? "#fffbeb" : "#fef2f2", border:`1px solid ${accuracy>=70?"rgba(16,185,129,0.25)":accuracy>=50?"rgba(245,158,11,0.22)":"rgba(239,68,68,0.22)"}`, borderRadius:12, display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ flexShrink:0, color: accuracy>=70?"#10b981":accuracy>=50?"#f59e0b":"#f87171" }}>
-              {accuracy >= 70 ? <Trophy size={16} /> : accuracy >= 50 ? <TrendingUp size={16} /> : <Target size={16} />}
-            </span>
-            <span style={{ color: accuracy>=70?"#10b981":accuracy>=50?"#f59e0b":"#f87171", fontSize:13, fontWeight:600 }}>
-              {accuracy >= 70 ? "Great performance! Keep solving papers to maintain your edge." : accuracy >= 50 ? "Decent score. Focus on weak topics to push above 70%." : "Keep practicing! Review your wrong answers and focus on fundamentals."}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Questions Tab ── */}
-      {tab === "questions" && (
-        <div className="an-fade">
-          {/* Filter pills */}
-          <div style={{ display:"flex", gap:6, marginBottom:16, flexWrap:"wrap" }}>
-            {[
-              { id:"all",     label:`All (${questionResults.length})` },
-              { id:"correct", label:`Correct (${correct})`,  color:"#10b981" },
-              { id:"wrong",   label:`Wrong (${wrong})`,      color:"#f87171" },
-              { id:"skipped", label:`Skipped (${skipped})`,  color:"#f59e0b" },
-            ].map(f => (
-              <button key={f.id} onClick={() => setQFilter(f.id)}
-                style={{ padding:"6px 14px", borderRadius:20, border:`1px solid ${qFilter===f.id ? (f.color||"#3b82f6")+"55" : "#f1f5f9"}`, background: qFilter===f.id ? (f.color||"#3b82f6")+"14" : "transparent", color: qFilter===f.id ? (f.color||"#3b82f6") : "#64748b", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Sora',sans-serif", transition:"all 0.15s" }}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {filteredQs.length === 0 && (
-              <div style={{ textAlign:"center", padding:"48px 20px", color:"#94a3b8" }}>
-                <div style={{ width:48, height:48, borderRadius:14, background:'#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' }}>
-                  <CheckCircle2 size={24} color="#10b981" />
-                </div>
-                <div style={{ fontSize:15, fontWeight:600 }}>No questions in this category</div>
-              </div>
-            )}
-            {filteredQs.map((q, ii) => {
-              const origIdx = (questionResults || []).indexOf(q);
-              const isOpen = expandedQ === origIdx;
-              const statusColor = q.isCorrect ? "#10b981" : q.userAnswer === undefined ? "#f59e0b" : "#f87171";
-              const statusLabel = q.isCorrect ? "Correct" : q.userAnswer === undefined ? "Skipped" : "Wrong";
-              const statusBg    = q.isCorrect ? "#ecfdf5" : q.userAnswer === undefined ? "#fffbeb" : "#fef2f2";
-              const sc = subjectColors[q.subject] || "#2563eb";
-              return (
-                <div key={origIdx}
-                  style={{ borderRadius:16, padding:"16px 18px", marginBottom:0, cursor:"pointer", transition:"all 0.2s", border:`1.5px solid ${isOpen ? statusColor+"55" : "#f1f5f9"}`, background: isOpen ? statusColor+"06" : "#ffffff", boxShadow: isOpen ? `0 4px 20px ${statusColor}18` : "0 1px 8px rgba(37,99,235,0.04)" }}
-                  onClick={() => setExpandedQ(isOpen ? null : origIdx)}>
-
-                  <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
-                    <div style={{ width:32, height:32, borderRadius:10, background:statusColor+"18", border:`1.5px solid ${statusColor}44`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
-                      <span style={{ fontFamily:"'Space Mono',monospace", fontSize:11, fontWeight:700, color:statusColor }}>{origIdx+1}</span>
+      <AnimatePresence mode="wait">
+        {/* ── Overview Tab ── */}
+        {tab === "overview" && (
+          <motion.div key="overview" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+              {subjects.map(({ name, icon, color }) => {
+                const d = subjectBreakdown[name];
+                if (!d) return null;
+                const pct = Math.round((d.correct / d.total) * 100);
+                const statusColor = pct >= 70 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#f87171";
+                return (
+                  <div key={name} className="premium-card" style={{ padding: "24px", position: "relative" }}>
+                    <div style={{ position: "absolute", top: 12, right: 12 }}>
+                      <div style={{ background: `${color}10`, padding: 8, borderRadius: 12, color }}>{icon}</div>
                     </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", gap:6, marginBottom:5, flexWrap:"wrap" }}>
-                        <span style={{ background:sc+"18", color:sc, fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:20, border:`1px solid ${sc}33` }}>{q.subject}</span>
-                        {q.topic && <span style={{ background:"#f1f5f9", color:"#64748b", fontSize:9, padding:"2px 8px", borderRadius:20 }}>{q.topic}</span>}
+                    <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase", marginBottom: 8 }}>{name}</div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      <span className="mono" style={{ fontSize: 32, fontWeight: 700, color: statusColor }}>{pct}%</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: "#475569", marginTop: 4, fontWeight: 600 }}>{d.correct} / {d.total} Correct</div>
+                    
+                    <div style={{ display: "flex", gap: 6, marginTop: 16 }}>
+                      <div style={{ flex: 1, height: 4, background: "#f1f5f9", borderRadius: 10, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: statusColor }} />
                       </div>
-                      <p style={{ margin:0, color:"#334155", fontSize:13.5, fontWeight:500, lineHeight:1.5, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:isOpen?"unset":2, WebkitBoxOrient:"vertical" }}>{q.q}</p>
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-                      <span style={{ background:statusBg, border:`1.5px solid ${statusColor}44`, color:statusColor, fontSize:11, fontWeight:700, padding:"4px 11px", borderRadius:20 }}>{statusLabel}</span>
-                      <svg width="14" height="14" fill="none" stroke="#94a3b8" strokeWidth="2.5" viewBox="0 0 24 24"
-                        style={{ transition:"transform 0.2s", transform:isOpen?"rotate(180deg)":"rotate(0deg)", flexShrink:0 }}>
-                        <path d="M6 9l6 6 6-6"/>
-                      </svg>
                     </div>
                   </div>
-
-                  {isOpen && (
-                    <div style={{ marginTop:16, paddingTop:16, borderTop:`1px solid ${statusColor}22` }}>
-                      <div style={{ fontSize:11, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Answer Choices</div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                        {q.options.map((opt, oi) => {
-                          const isCorrectOpt = oi === q.ans;
-                          const isUserOpt    = oi === q.userAnswer;
-                          let bg="#fafafa", border="#e2e8f0", textColor="#475569", labelBg="#e2e8f0", labelColor="#64748b";
-                          if (isCorrectOpt)                   { bg="#ecfdf5"; border="#10b981"; textColor="#065f46"; labelBg="#10b981"; labelColor="#fff"; }
-                          else if (isUserOpt && !isCorrectOpt){ bg="#fef2f2"; border="#f87171"; textColor="#7f1d1d"; labelBg="#f87171"; labelColor="#fff"; }
-                          return (
-                            <div key={oi} style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderRadius:12, background:bg, border:`1.5px solid ${border}` }}>
-                              <span style={{ width:26, height:26, borderRadius:"50%", background:labelBg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:labelColor, flexShrink:0 }}>
-                                {String.fromCharCode(65+oi)}
-                              </span>
-                              <span style={{ fontSize:13.5, color:textColor, flex:1, lineHeight:1.4 }}>{opt}</span>
-                              {isCorrectOpt && <Check size={15} color="#10b981" style={{ flexShrink:0 }} />}
-                              {isUserOpt && !isCorrectOpt && <X size={15} color="#f87171" style={{ flexShrink:0 }} />}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {!q.isCorrect && q.userAnswer !== undefined && (
-                        <div style={{ marginTop:12, padding:"10px 14px", borderRadius:10, background:"#eff6ff", border:"1px solid rgba(37,99,235,0.2)" }}>
-                          <span style={{ fontSize:12, color:"#1e40af", fontWeight:600 }}>
-                            ✓ Correct answer: <strong>{q.options[q.ans]}</strong>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Topics Tab ── */}
-      {tab === "topics" && (
-        <div className="an-fade">
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:8 }}>
-            <div style={{ color:"#94a3b8", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:1.2 }}>
-              Performance by Topic — {topicEntries.length} topics
+                );
+              })}
             </div>
-            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-              {[["#10b981","≥60% Strong"],["#f59e0b","40–59% OK"],["#f87171","<40% Weak"]].map(([c,l]) => (
-                <span key={l} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#94a3b8", fontWeight:600 }}>
-                  <span style={{ width:8, height:8, borderRadius:2, background:c, display:"inline-block" }} />{l}
-                </span>
+
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              style={{ marginTop: 20, padding: "16px 20px", background: accuracy >= 70 ? "#f0fdf4" : accuracy >= 50 ? "#fffbeb" : "#fef2f2", border: `1px solid ${accuracy >= 70 ? "#bbf7d0" : accuracy >= 50 ? "#fde68a" : "#fecaca"}`, borderRadius: 16, display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ background: "#fff", width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+                {accuracy >= 70 ? <Trophy size={18} color="#10b981" /> : accuracy >= 50 ? <TrendingUp size={18} color="#f59e0b" /> : <Target size={18} color="#f87171" />}
+              </div>
+              <p style={{ margin: 0, fontSize: 13.5, color: accuracy >= 70 ? "#15803d" : accuracy >= 50 ? "#b45309" : "#b91c1c", fontWeight: 700, lineHeight: 1.4 }}>
+                {accuracy >= 70 ? "Legendary performance! You're clearly above the competition." : accuracy >= 50 ? "Solid effort. Sharp targeting on missed topics will skyrocket your rank." : "The base is set. Now focus on precision and review every missed question."}
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ── Questions Tab ── */}
+        {tab === "questions" && (
+          <motion.div key="questions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {/* Filters */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+              {[
+                { id: "all", label: "All Questions", icon: <Layout size={14} /> },
+                { id: "correct", label: "Correct", icon: <CheckCircle2 size={14} />, color: "#10b981" },
+                { id: "wrong", label: "Mistakes", icon: <X size={14} />, color: "#f87171" },
+                { id: "skipped", label: "Skipped", icon: <Info size={14} />, color: "#f59e0b" },
+              ].map(f => (
+                <button key={f.id} onClick={() => setQFilter(f.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: 12, border: "1.5px solid", borderColor: qFilter === f.id ? (f.color || "#2563eb") : "#e2e8f0", background: qFilter === f.id ? `${(f.color || "#2563eb")}10` : "#fff", color: qFilter === f.id ? (f.color || "#2563eb") : "#64748b", fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>
+                  {f.icon} {f.label}
+                </button>
               ))}
             </div>
-          </div>
 
-          <div className="an-topic-grid">
-            {topicEntries.map(([topic, d], ti) => {
-              const p   = Math.round((d.correct / d.total) * 100);
-              const tc  = p >= 60 ? "#10b981" : p >= 40 ? "#f59e0b" : "#f87171";
-              const tbg = p >= 60 ? "#ecfdf5" : p >= 40 ? "#fffbeb" : "#fef2f2";
-              const sc  = subjectColors[d.subject] || "#2563eb";
-              return (
-                <div key={topic}
-                  style={{ background:"#ffffff", border:"1px solid rgba(99,102,241,0.08)", borderRadius:16, padding:"16px 18px", boxShadow:"0 2px 12px rgba(37,99,235,0.05)", transition:"transform 0.2s, box-shadow 0.2s" }}
-                  onMouseEnter={e => { e.currentTarget.style.transform="translateY(-3px)"; e.currentTarget.style.boxShadow="0 8px 24px rgba(37,99,235,0.1)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)";    e.currentTarget.style.boxShadow="0 2px 12px rgba(37,99,235,0.05)"; }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
-                    <div style={{ flex:1, minWidth:0, paddingRight:10 }}>
-                      <div style={{ color:"#0f172a", fontSize:13, fontWeight:700, lineHeight:1.3, marginBottom:5 }}>{topic || "General"}</div>
-                      <span style={{ background:sc+"18", color:sc, fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:20, border:`1px solid ${sc}33` }}>{d.subject}</span>
+            <div style={{ display: "grid", gap: 12 }}>
+              {filteredQs.map((q, ii) => {
+                const origIdx = questionResults.indexOf(q);
+                const isOpen = expandedQ === origIdx;
+                const statusColor = q.isCorrect ? "#10b981" : q.userAnswer === undefined ? "#f59e0b" : "#f87171";
+                return (
+                  <motion.div layout key={origIdx} className="premium-card" 
+                    style={{ padding: "18px 24px", cursor: "pointer", border: isOpen ? `1.5px solid ${statusColor}44` : "1px solid rgba(0,0,0,0.04)" }}
+                    onClick={() => setExpandedQ(isOpen ? null : origIdx)}>
+                    
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 10, background: `${statusColor}10`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{origIdx + 1}</span>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: subjectColors[q.subject], textTransform: "uppercase" }}>{q.subject}</span>
+                          <span style={{ fontSize: 10, color: "#94a3b8" }}>•</span>
+                          <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>{q.topic}</span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#334155", lineHeight: 1.5 }}>{q.q}</p>
+                      </div>
+                      <ChevronRight size={18} color="#cbd5e1" style={{ transform: isOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
                     </div>
-                    <div style={{ background:tbg, border:`1px solid ${tc}33`, borderRadius:12, padding:"5px 12px", textAlign:"center", flexShrink:0 }}>
-                      <div style={{ fontFamily:"'Space Mono',monospace", fontSize:18, fontWeight:700, color:tc, lineHeight:1 }}>{p}%</div>
-                      <div style={{ fontSize:9, color:"#94a3b8", marginTop:2 }}>{d.correct}/{d.total}</div>
+
+                    <AnimatePresence>
+                      {isOpen && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: "hidden" }}>
+                          <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1.5px solid #f1f5f9" }}>
+                            <div style={{ display: "grid", gap: 10 }}>
+                              {q.options.map((opt, oi) => {
+                                const isCorrect = oi === q.ans;
+                                const isUser = oi === q.userAnswer;
+                                let borderColor = "#f1f5f9", bg = "#fff", labelColor = "#94a3b8";
+                                if (isCorrect) { borderColor = "#10b981"; bg = "#f0fdf4"; labelColor = "#10b981"; }
+                                if (isUser && !isCorrect) { borderColor = "#f87171"; bg = "#fef2f2"; labelColor = "#f87171"; }
+                                
+                                return (
+                                  <div key={oi} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 14, border: "2px solid", borderColor, background: bg }}>
+                                    <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#fff", border: "1.5px solid", borderColor: labelColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: labelColor }}>
+                                      {String.fromCharCode(65+oi)}
+                                    </div>
+                                    <span style={{ fontSize: 13.5, fontWeight: (isCorrect || isUser) ? 700 : 600, color: (isCorrect || isUser) ? "#0f172a" : "#475569" }}>{opt}</span>
+                                    {isCorrect && <Check size={16} color="#10b981" style={{ marginLeft: "auto" }} />}
+                                    {isUser && !isCorrect && <X size={16} color="#f87171" style={{ marginLeft: "auto" }} />}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Topics Tab ── */}
+        {tab === "topics" && (
+          <motion.div key="topics" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+              {topicEntries.map(([topic, d]) => {
+                const p = Math.round((d.correct / d.total) * 100);
+                const color = p >= 60 ? "#10b981" : p >= 40 ? "#f59e0b" : "#f87171";
+                const bg = p >= 60 ? "#f0fdf4" : p >= 40 ? "#fffbeb" : "#fef2f2";
+                return (
+                  <div key={topic} className="premium-card" style={{ padding: "20px 24px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: subjectColors[d.subject], textTransform: "uppercase", marginBottom: 4 }}>{d.subject}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", lineHeight: 1.3 }}>{topic}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                      <div className="mono" style={{ fontSize: 22, fontWeight: 700, color }}>{p}%</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>{d.correct}/{d.total} Correct</div>
+                      </div>
+                    </div>
+                    <div style={{ height: 8, background: "#f1f5f9", borderRadius: 10, overflow: "hidden" }}>
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${p}%` }} style={{ height: "100%", background: color, borderRadius: 10 }} />
                     </div>
                   </div>
-                  <div style={{ height:6, background:"#f1f5f9", borderRadius:99, overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:`${p}%`, borderRadius:99, transition:"width 0.8s cubic-bezier(0.4,0,0.2,1)", boxShadow:`0 0 8px ${tc}66`, background: p>=60?"linear-gradient(90deg,#10b981,#059669)":p>=40?"linear-gradient(90deg,#f59e0b,#d97706)":"linear-gradient(90deg,#f87171,#ef4444)" }} />
-                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Prediction Tab ── */}
+        {tab === "prediction" && (
+          <motion.div key="prediction" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}>
+            {!isPro ? (
+              <div className="premium-card" style={{ padding: "60px 40px", textAlign: "center", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ position: "absolute", top: -80, left: -80, width: 250, height: 250, background: "rgba(37,99,235,0.06)", borderRadius: "50%", filter: "blur(50px)" }} />
+                <div style={{ position: "absolute", bottom: -80, right: -80, width: 250, height: 250, background: "rgba(163,58,253,0.06)", borderRadius: "50%", filter: "blur(50px)" }} />
+                
+                <motion.div animate={{ y: [0, -10, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                  style={{ width: 80, height: 80, borderRadius: 24, background: "linear-gradient(135deg, #f59e0b, #fbbf24)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24, boxShadow: "0 10px 25px rgba(245,158,11,0.3)" }}>
+                  <Crown size={40} color="#fff" />
+                </motion.div>
+                
+                <h2 style={{ margin: "0 0 16px", color: "#0f172a", fontSize: 26, fontWeight: 800, letterSpacing: -0.8 }}>Unlock Pro Rankings</h2>
+                <p style={{ margin: "0 0 32px", color: "#64748b", fontSize: 15, maxWidth: 460, lineHeight: 1.7, fontWeight: 500 }}>
+                   Get an accurate 2025 rank estimation and discover specific college branches you qualify for based on your performance in this paper.
+                </p>
+                
+                <div style={{ display: "flex", gap: 16, marginBottom: 40, flexWrap: "wrap", justifyContent: "center" }}>
+                  {[
+                    { icon: <Target size={18} />, label: "Rank AI" },
+                    { icon: <Building2 size={18} />, label: "College Matcher" },
+                    { icon: <Sparkles size={18} />, label: "Category Edge" }
+                  ].map(feat => (
+                    <div key={feat.label} style={{ background: "#fff", padding: "12px 20px", borderRadius: 16, border: "1.5px solid #f1f5f9", display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 700, color: "#1e293b", boxShadow: "0 4px 12px rgba(0,0,0,0.03)" }}>
+                      <span style={{ color: "#2563eb" }}>{feat.icon}</span> {feat.label}
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
-            {topicEntries.length === 0 && (
-              <div style={{ gridColumn:"1/-1", textAlign:"center", padding:"48px 20px", color:"#94a3b8" }}>
-                No topic data available for this paper.
+
+                <button onClick={onUpgrade} 
+                  style={{ padding: "16px 40px", background: "linear-gradient(135deg, #2563eb, #1d4ed8)", border: "none", borderRadius: 18, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: "'Sora',sans-serif", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 12px 30px rgba(37,99,235,0.3)", transition: "all 0.3s" }}
+                  onMouseEnter={e => e.currentTarget.style.transform = "scale(1.02) translateY(-2px)"}
+                  onMouseLeave={e => e.currentTarget.style.transform = "scale(1) translateY(0)"}>
+                  <Zap size={18} fill="#fff" /> Upgrade to Pro Excellence
+                </button>
               </div>
+            ) : (
+              <PredictionComponent score={correct} category={predCategory} onCategoryChange={setPredCategory} />
             )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PredictionComponent({ score, category, onCategoryChange }) {
+  const s = Math.min(160, Math.max(0, score));
+  const generalRank = predictRank(s);
+  const mult = CATEGORY_MULTIPLIERS[category] || 1;
+  const catRank = Math.round(generalRank / mult);
+  const catKey = CATEGORY_TO_KEY[category] || "OC";
+  
+  const results = COLLEGES
+    .filter(c => c.branches["CSE"])
+    .map(c => {
+      const closing = c.branches["CSE"][catKey] ?? c.branches["CSE"]["OC"] ?? null;
+      if (!closing) return null;
+      const ratio = catRank / closing;
+      let chance;
+      if (ratio <= 0.6) chance = "Safe";
+      else if (ratio <= 0.85) chance = "Good";
+      else if (ratio <= 1.0) chance = "Moderate";
+      else chance = null;
+      return { ...c, closing, chance, ratio };
+    })
+    .filter(c => c && c.chance)
+    .sort((a,b) => a.ratio - b.ratio)
+    .slice(0, 10);
+
+  return (
+    <div style={{ display: "grid", gap: 24 }}>
+      <div className="premium-card" style={{ padding: "32px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ width: 50, height: 50, borderRadius: 16, background: "linear-gradient(135deg, #f59e0b, #d97706)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 20px rgba(245,158,11,0.2)" }}>
+              <Sparkles size={24} color="#fff" />
+            </div>
+            <div>
+              <h3 style={{ margin: "0 0 4px", fontSize: 20, color: "#0f172a", fontWeight: 800 }}>Outcome Simulator</h3>
+              <div style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>Score Profile: {score} Units</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 13, color: "#64748b", fontWeight: 700 }}>Category:</span>
+            <select value={category} onChange={e => onCategoryChange(e.target.value)} 
+              style={{ padding: "10px 18px", borderRadius: 14, border: "1.5px solid #e2e8f0", background: "#f8faff", color: "#0f172a", fontSize: 14, fontWeight: 700, fontFamily: "'Sora',sans-serif", cursor: "pointer", outline: "none" }}>
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
         </div>
-      )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 20 }}>
+          {[
+            { label: "General Rank", val: generalRank, color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
+            { label: `${category} Rank`, val: catRank, color: "#9333ea", bg: "#f5f3ff", border: "#e9d5ff" },
+          ].map(stat => (
+            <div key={stat.label} style={{ background: stat.bg, padding: "24px", borderRadius: 20, border: `1px solid ${stat.border}` }}>
+              <div style={{ fontSize: 11, color: stat.color, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{stat.label}</div>
+              <div className="mono" style={{ fontSize: 32, fontWeight: 700, color: stat.color }}>{stat.val.toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="premium-card" style={{ padding: "32px" }}>
+        <h3 style={{ margin: "0 0 24px", fontSize: 18, color: "#0f172a", fontWeight: 800, display: "flex", alignItems: "center", gap: 10 }}>
+          <Building2 size={20} color="#2563eb" /> Best Fit Colleges (CSE)
+        </h3>
+        <div style={{ display: "grid", gap: 12 }}>
+          {results.length > 0 ? results.map(col => (
+            <div key={col.name} className="college-card" style={{ display: "flex", alignItems: "center", gap: 16, padding: "18px", background: "#fff", border: "1.5px solid #f1f5f9", borderRadius: 18, transition: "all 0.2s" }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Building2 size={20} color="#64748b" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, background: col.chance === "Safe" ? "#f0fdf4" : col.chance === "Good" ? "#eff6ff" : "#fffbeb", color: col.chance === "Safe" ? "#16a34a" : col.chance === "Good" ? "#2563eb" : "#d97706", padding: "3px 10px", borderRadius: 20, border: "1px solid currentColor" }}>{col.chance}</span>
+                </div>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: "#1e293b", marginBottom: 2 }}>{col.name}</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{col.place}</div>
+              </div>
+              <div className="college-rank" style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 800, textTransform: "uppercase", marginBottom: 2 }}>Closing Rank</div>
+                <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{col.closing.toLocaleString()}</div>
+              </div>
+            </div>
+          )) : (
+            <div style={{ textAlign: "center", padding: "40px", color: "#64748b", fontSize: 14, fontWeight: 600 }}>
+              No immediate CSE matches. High competition area detected.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

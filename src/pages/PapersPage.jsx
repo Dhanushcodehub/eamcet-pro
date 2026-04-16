@@ -12,7 +12,7 @@ function PapersPage({ sessions, onStart, plan = 'free', onUpgrade }) {
   const filtered = filter === "All" ? PAPER_SETS : PAPER_SETS.filter(p => p.year === filter);
 
   return (
-    <div>
+    <main>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div>
           <h1 style={{ margin: "0 0 5px", color: "#0f172a", fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }}>Previous Year Papers</h1>
@@ -41,7 +41,7 @@ function PapersPage({ sessions, onStart, plan = 'free', onUpgrade }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
         {filtered.map((paper, idx) => {
           const done = solved.has(paper.id);
           const paperSessions = sessions.filter(s => s.paperId === paper.id);
@@ -98,7 +98,7 @@ function PapersPage({ sessions, onStart, plan = 'free', onUpgrade }) {
           );
         })}
       </div>
-    </div>
+    </main>
   );
 }
 

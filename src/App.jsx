@@ -47,27 +47,15 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(window._firebaseAuth, (firebaseUser) => {
       console.log("[App] onAuthStateChanged fired. User:", firebaseUser ? firebaseUser.email : "null");
       if (firebaseUser) {
-        const hasPhone = !!firebaseUser.phoneNumber;
-
         setUser({
           uid:   firebaseUser.uid,
           name:  firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
           email: firebaseUser.email,
-          emailVerified: firebaseUser.emailVerified,
-          phoneVerified: hasPhone,
         });
 
-        const isPasswordProvider = firebaseUser.providerData?.some(p => p.providerId === 'password');
-        const needsVerification = isPasswordProvider && !firebaseUser.emailVerified && !hasPhone;
-
         if (window.location.pathname === "/" || window.location.pathname === "/login") {
-          if (needsVerification) {
-            console.log("[App] User needs verification. Staying on Auth/Login.");
-            if (window.location.pathname !== "/login") navigate("/login");
-          } else {
-            console.log("[App] Logged in & verified, redirecting to /dashboard");
-            navigate("/dashboard", { replace: true });
-          }
+          console.log("[App] Logged in, redirecting to /dashboard");
+          navigate("/dashboard", { replace: true });
         }
       } else {
         console.log("[App] No user found.");
@@ -93,8 +81,24 @@ export default function App() {
           setSessions(prev => remote.length >= prev.length ? remote : prev);
           localSave(user.uid, remote.length >= cached.length ? remote : cached);
         }
-        // Load saved subscription plan
-        if (d?.plan) setPlan(d.plan);
+        // Load saved subscription plan and check expiration
+        if (d?.plan && d.plan !== 'free') {
+          const now = Date.now();
+          const pUpdate = d.planUpdatedAt || now;
+          // Calculate a fallback expiration if missing: 30 days for pro, 365 for annual
+          let pExpires = d.planExpiresAt;
+          if (!pExpires) {
+            pExpires = pUpdate + (d.plan === 'annual' ? 365 : 30) * 86400000;
+          }
+
+          if (now > pExpires) {
+            console.log(`[Subscription] Plan ${d.plan} expired. Reverting to free.`);
+            db.update(`users/${user.uid}`, { plan: 'free' });
+            setPlan('free');
+          } else {
+            setPlan(d.plan);
+          }
+        }
         
         // Track unique referral if they just signed up using a URL
         if (!d?.referredBy) {
@@ -128,10 +132,22 @@ export default function App() {
 
   // ── Save plan to Firestore after successful payment ──────────────────────
   const updatePlan = async (newPlan) => {
+    let expiresAt = null;
+    const now = Date.now();
+    if (newPlan === 'pro') {
+      expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days
+    } else if (newPlan === 'annual') {
+      expiresAt = now + 365 * 24 * 60 * 60 * 1000; // 365 days
+    }
+    
     setPlan(newPlan);
     if (user) {
       try {
-        await db.update(`users/${user.uid}`, { plan: newPlan, planUpdatedAt: Date.now() });
+        await db.update(`users/${user.uid}`, { 
+          plan: newPlan, 
+          planUpdatedAt: now,
+          ...(expiresAt && { planExpiresAt: expiresAt })
+        });
       } catch (e) {
         console.error('Failed to save plan:', e);
       }
@@ -195,15 +211,20 @@ export default function App() {
       />
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<AuthPage user={user} onLogin={u => { setUser(u); navigate("/dashboard"); }} />} />
-        <Route path="/verify" element={<VerifyPage onVerified={(u) => { setUser(u); navigate("/dashboard"); }} />} />
+        <Route path="/login" element={<>
+          <SEO title="Sign In" description="Securely log in to your EAMCET Pro account to access mock tests and analytics." path="/login" />
+          <AuthPage user={user} onLogin={u => { setUser(u); navigate("/dashboard"); }} />
+        </>} />
+        <Route path="/verify" element={<>
+          <SEO title="Verify Email" description="Confirm your email address to activate your EAMCET Pro account." path="/verify" />
+          <VerifyPage onVerified={(u) => { setUser(u); navigate("/dashboard"); }} />
+        </>} />
         <Route path="/pricing" element={<PricingPage user={user} plan={plan} onUpgrade={updatePlan} />} />
         <Route path="/refer" element={<ReferPage user={user} plan={plan} />} />
         
         {/* Shell-wrapped routes */}
         <Route path="/*" element={
-          (user && !user.emailVerified && !user.phoneVerified) ? <Navigate to="/login" replace /> : (
-            <Shell user={user} plan={plan} onLogout={handleLogout}>
+          <Shell user={user} plan={plan} onLogout={handleLogout}>
             <Routes>
               <Route path="dashboard" element={<>
                 <SEO title="Dashboard" description="Your EAMCET Pro dashboard." path="/dashboard" />
@@ -254,12 +275,12 @@ export default function App() {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Shell>
-          )
         } />
 
         {/* Full-screen exam route */}
         <Route path="/exam" element={
-          activePaper && user ? (
+          activePaper && user ? (<>
+            <SEO title={`Exam: ${activePaper.label}`} description={`Attempt the ${activePaper.label} mock test on EAMCET Pro.`} path="/exam" />
             <ExamPage
               paper={activePaper}
               onSubmit={(result) => {
@@ -269,17 +290,20 @@ export default function App() {
               }}
               onExit={() => navigate("/dashboard")}
             />
-          ) : <Navigate to="/dashboard" replace />
+          </>) : <Navigate to="/dashboard" replace />
         } />
 
         {/* Full-screen analysis route */}
         <Route path="/analysis" element={
-          analysisData && user ? (
+          analysisData && user ? (<>
+            <SEO title="Performance Analysis" description="Detailed breakdown of your recent EAMCET mock test performance." path="/analysis" />
             <AnalysisPage
               data={analysisData}
+              plan={plan}
+              onUpgrade={() => navigate('/pricing')}
               onBack={() => { setActivePaper(null); setAnalysisData(null); navigate("/papers"); }}
             />
-          ) : <Navigate to="/dashboard" replace />
+          </>) : <Navigate to="/dashboard" replace />
         } />
       </Routes>
     </>
