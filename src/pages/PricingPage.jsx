@@ -46,8 +46,9 @@ const PLANS = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 199,
-    annualPrice: 1499,
+    price: 99,
+    originalPrice: 499,
+    annualPrice: 999,
     badge: 'Most Popular',
     badgeIcon: 'flame',
     color: '#2563eb',
@@ -66,20 +67,21 @@ const PLANS = [
       { text: 'Email support', included: true },
       { text: 'Early access to new features', included: false },
     ],
-    cta: 'Start 7-Day Free Trial',
+    cta: 'Upgrade to Pro',
     ctaAction: 'pay',
   },
   {
     id: 'annual',
     name: 'Pro Annual',
-    price: 125,
-    annualPrice: 1499,
+    price: 58,
+    annualPrice: 699,
+    originalAnnualPrice: 2499,
     badge: 'Best Value',
     badgeIcon: 'crown',
     color: '#059669',
     bgColor: '#ecfdf5',
     borderColor: '#059669',
-    description: 'Save ₹900 vs monthly billing',
+    description: 'Save big with yearly billing',
     features: [
       { text: 'Everything in Pro', included: true },
       { text: 'Priority email & chat support', included: true },
@@ -99,10 +101,6 @@ const PLANS = [
 
 const FAQS = [
   {
-    q: 'Is there a free trial?',
-    a: 'Yes! Every Pro plan starts with a 7-day free trial. You will not be charged until the trial ends, and you can cancel any time before.',
-  },
-  {
     q: 'Can I cancel my subscription anytime?',
     a: 'Absolutely. You can cancel from your account settings at any time with zero cancellation fee. Your Pro access continues until the end of the current billing cycle.',
   },
@@ -118,10 +116,6 @@ const FAQS = [
     q: 'Do coupon codes work on annual plans?',
     a: 'Yes! Most coupons apply to both monthly and annual billing. The annual plan already includes a 37% discount, so some single-use coupons may not stack.',
   },
-  {
-    q: 'What is the money-back guarantee?',
-    a: 'If you are unhappy within 7 days of your first payment, email us and we will refund 100% with no questions asked.',
-  },
 ];
 
 export default function PricingPage({ user, plan, onUpgrade }) {
@@ -131,6 +125,7 @@ export default function PricingPage({ user, plan, onUpgrade }) {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
   const [openFaq, setOpenFaq] = useState(null);
+  const [showOffers, setShowOffers] = useState(false);
   const [payLoading, setPayLoading] = useState(null);
   const [paymentSuccess, setPaymentSuccess] = useState(null); // { paymentId, plan }
   const [rzpReady, setRzpReady] = useState(false);
@@ -159,6 +154,15 @@ export default function PricingPage({ user, plan, onUpgrade }) {
     }
   };
 
+  const applySpecificCoupon = (codeToApply) => {
+    setCouponInput(codeToApply);
+    if (VALID_COUPONS[codeToApply]) {
+      setAppliedCoupon({ code: codeToApply, ...VALID_COUPONS[codeToApply] });
+      setCouponError('');
+      setShowOffers(false);
+    }
+  };
+
   const removeCoupon = () => { setAppliedCoupon(null); setCouponInput(''); setCouponError(''); };
 
   const getDiscountedPrice = (basePrice) => {
@@ -176,9 +180,12 @@ export default function PricingPage({ user, plan, onUpgrade }) {
       return;
     }
 
+    const targetPlan = PLANS.find(p => p.ctaAction === planId);
+    if (!targetPlan) return;
+
     const isAnnual = planId === 'pay_annual';
-    const planLabel = isAnnual ? 'Pro Annual' : 'Pro Monthly';
-    const baseAmount = isAnnual ? 1499 : 199;
+    const planLabel = targetPlan.name;
+    const baseAmount = isAnnual ? targetPlan.annualPrice : targetPlan.price;
     const finalAmount = getDiscountedPrice(baseAmount);
     const amountPaise = finalAmount * 100; // Razorpay expects paise
 
@@ -385,14 +392,17 @@ export default function PricingPage({ user, plan, onUpgrade }) {
   return (
     <main className="pricing-page">
       <SEO 
-        title="Pricing — Crack EAMCET at ₹199/month" 
-        description="Get unlimited EAMCET practice papers, mock tests, rank predictor, and analytics. Start with a 7-day free trial." 
+        title="Pricing — Crack EAMCET at ₹99/month" 
+        description="Get unlimited EAMCET practice papers, mock tests, and analytics for just ₹99. Most affordable preparation platform." 
         path="/pricing" 
       />
       <style dangerouslySetInnerHTML={{ __html: styles }} />
 
       {/* Hero */}
       <section className="pricing-hero">
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fef3c7', color: '#92400e', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, marginBottom: 16 }}>
+          <Flame size={14} fill="#92400e" opacity={0.8} /> Special Launch Offer — 80% Off
+        </div>
         <h1>Simple, Honest <span>Pricing</span></h1>
         <p>Start free. Upgrade when you're ready to go full throttle. Cancel anytime.</p>
 
@@ -403,7 +413,7 @@ export default function PricingPage({ user, plan, onUpgrade }) {
               Monthly
             </button>
             <button className={`toggle-btn ${billing === 'annual' ? 'active' : 'inactive'}`} onClick={() => setBilling('annual')}>
-              Annual <span className="annual-save-badge">Save ₹900</span>
+              Annual <span className="annual-save-badge">Save ₹500+</span>
             </button>
         </div>
       </div>
@@ -444,9 +454,16 @@ export default function PricingPage({ user, plan, onUpgrade }) {
                 </div>
 
                 <div className="plan-original">
-                  {hasDiscount && displayPrice > 0 ? `₹${displayPrice}/mo` : ''}
-                  {!hasDiscount && billing === 'annual' && plan.id === 'pro' ? `Billed ₹${plan.annualPrice}/yr` : ''}
-                  {!hasDiscount && billing === 'annual' && plan.id === 'annual' ? `Billed ₹1,499/yr` : ''}
+                  {hasDiscount && displayPrice > 0 ? (
+                    <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: 8 }}>₹{displayPrice}</span>
+                  ) : null}
+                  {!hasDiscount && plan.price > 0 ? (
+                    <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: 8 }}>
+                      ₹{billing === 'annual' && plan.originalAnnualPrice ? Math.round(plan.originalAnnualPrice / 12) : plan.originalPrice}
+                    </span>
+                  ) : null}
+                  {billing === 'annual' && (plan.id === 'pro' || plan.id === 'annual') && !hasDiscount ? `Billed ₹${plan.annualPrice}/yr` : ''}
+                  {hasDiscount && displayPrice > 0 ? `Billed ${billing === 'annual' ? '₹' + annualTotal + '/yr' : 'monthly'}` : ''}
                 </div>
 
                 <p className="plan-desc">{plan.description}</p>
@@ -484,8 +501,7 @@ export default function PricingPage({ user, plan, onUpgrade }) {
         <div className="coupon-section">
           <div className="coupon-box">
             <h3><Tag size={16} color="#2563eb" /> Have a coupon code?</h3>
-            <p>Try EAMCET30, FIRST50, CRACK2025, STUDENT99, or AKSHARA100 for special discounts!</p>
-            <div className="coupon-input-row">
+            <div className="coupon-input-row" style={{ marginTop: 16 }}>
               <input
                 className="coupon-input"
                 placeholder="ENTER CODE"
@@ -495,18 +511,45 @@ export default function PricingPage({ user, plan, onUpgrade }) {
               />
               <button className="coupon-apply-btn" onClick={applyCoupon}>Apply</button>
             </div>
+            
+            <button 
+              onClick={() => setShowOffers(!showOffers)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 16, padding: 0 }}
+            >
+              {showOffers ? <ChevronUp size={14} /> : <ChevronDown size={14} />} 
+              {showOffers ? "Hide Available Offers" : "View Available Offers"}
+            </button>
+
+            {showOffers && (
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, animation: 'slideInUp 0.3s ease out' }}>
+                {Object.keys(VALID_COUPONS).map((code) => (
+                  <div key={code} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 10 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Tag size={12} color="#2563eb"/> {code}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{VALID_COUPONS[code].label}</div>
+                    </div>
+                    <button 
+                      onClick={() => applySpecificCoupon(code)}
+                      style={{ padding: '6px 12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}
+                      onMouseOver={(e) => e.currentTarget.style.background = '#dbeafe'}
+                      onMouseOut={(e) => e.currentTarget.style.background = '#eff6ff'}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {appliedCoupon && (
-              <div className="coupon-success">
+              <div className="coupon-success" style={{ marginTop: 16 }}>
                 <span className="coupon-success-text"><CheckCircle2 size={16} /> {appliedCoupon.code} — {appliedCoupon.label} applied!</span>
                 <button className="coupon-remove" onClick={removeCoupon}>Remove</button>
               </div>
             )}
             {couponError && <div className="coupon-error">⚠ {couponError}</div>}
-          </div>
-
-          <div className="guarantee-strip">
-            <Shield size={20} color="#92400e" />
-            7-Day Money-Back Guarantee — No questions asked
           </div>
         </div>
 
@@ -514,7 +557,7 @@ export default function PricingPage({ user, plan, onUpgrade }) {
         <div className="trusted-section">
           <h3>Used by students from</h3>
           <div className="trusted-logos">
-            {['JNTUH', 'Osmania University', 'NIT Warangal', 'BITS Hyderabad', 'IIT Hyderabad', 'IIIT Hyderabad'].map((name) => (
+            {['JNTUH', 'Osmania University', 'VNR VJIET', 'CBIT', 'GRIET', 'BVRIT', 'G Narayanamma', 'Gokaraju Rangaraju'].map((name) => (
               <div key={name} className="trusted-logo">{name}</div>
             ))}
           </div>
