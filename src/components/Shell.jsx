@@ -74,24 +74,26 @@ function Shell({ user, plan = 'free', onLogout, children }) {
         .brand-container {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 6px;
           overflow: hidden;
           white-space: nowrap;
         }
         
         .brand-logo {
-          width: 36px; 
-          height: 36px; 
-          border-radius: 10px; 
-          background: linear-gradient(135deg, #2563eb, #1d4ed8); 
-          display: flex; 
-          align-items: center; 
-          justify-content: center; 
-          font-size: 16px; 
-          font-weight: 700; 
-          color: #ffffff; 
+          width: 40px; 
+          height: 40px; 
+          border-radius: 10px;
+          overflow: hidden;
           flex-shrink: 0;
-          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .brand-logo img {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          display: block;
         }
 
         .brand-text {
@@ -415,7 +417,7 @@ function Shell({ user, plan = 'free', onLogout, children }) {
       <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <div className="brand-container">
-            <div className="brand-logo">E</div>
+            <div className="brand-logo"><img src="/favicon.png" alt="EAMCET Pro Logo" /></div>
             <span className="brand-text">EAMCET <span>Pro</span></span>
           </div>
 

@@ -254,7 +254,7 @@ export default function LandingPage() {
       <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
         <div className="nav-container">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => window.scrollTo(0, 0)}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #2563eb, #1e40af)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: 18 }}>E</div>
+            <img src="/favicon.png" alt="EAMCET Pro Logo" style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }} />
             <span className="sora-font" style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.03em' }}>
               EAMCET<span style={{ color: '#2563eb' }}>Pro</span>
             </span>
@@ -698,7 +698,7 @@ export default function LandingPage() {
       <footer className="footer">
         <div className="footer-content">
           <div className="footer-brand">
-            <h3 className="sora-font"><div style={{ width: 24, height: 24, borderRadius: 6, background: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>E</div> EAMCET Pro</h3>
+            <h3 className="sora-font"><img src="/favicon.png" alt="EAMCET Pro Logo" style={{ width: 28, height: 28, objectFit: 'contain' }} /> EAMCET Pro</h3>
             <p>The ultimate preparation companion for Telangana State Engineering, Agriculture & Medical Common Entrance Test.</p>
           </div>
 

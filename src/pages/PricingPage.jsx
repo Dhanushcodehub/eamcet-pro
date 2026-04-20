@@ -7,7 +7,7 @@ import { CheckCircle2, X, Zap, Shield, Gift, ChevronDown, ChevronUp, Tag, Star, 
 // Key ID is safe to use on the frontend (public).
 // Key Secret (0AeXhZ0QjKM93DD5qX8eA1oo) must ONLY be used server-side for
 // order creation & payment verification — never expose it in frontend code.
-const RAZORPAY_KEY_ID = 'rzp_live_SdosE3MlKgGqfR';
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_SfLMuOtI3TqLxi';
 
 const VALID_COUPONS = {
   'EAMCET30': { discount: 30, label: '30% off', type: 'percent' },
