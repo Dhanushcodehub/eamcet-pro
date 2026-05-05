@@ -129,13 +129,6 @@ eamcet-pro/
 
 The official version of **EAMCET Pro** is hosted at [eamcetpro.tech](https://eamcetpro.tech).
 
-To deploy your own instance:
-
-1. Push your code to GitHub.
-2. Import the repository into your preferred hosting provider (e.g., Vercel, Netlify).
-3. Add your Firebase environment variables under **Project Settings → Environment Variables**.
-4. Deploy!
-
 ---
 
 ## 🤝 Contributing
